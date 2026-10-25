@@ -1037,6 +1037,8 @@ func runPlum(ctx context.Context) error {
 	}
 }
 func main() {
+	// Packaged programs use an explicit loader; keep private libc off stock children.
+	_ = os.Unsetenv("LD_LIBRARY_PATH")
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version)
 		return
