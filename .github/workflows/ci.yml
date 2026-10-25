@@ -1,0 +1,22 @@
+name: Go checks
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: source/go.mod
+      - name: Unit tests
+        working-directory: source
+        run: go test -count=1 ./...
+      - name: Vet
+        working-directory: source
+        run: go vet ./...
+      - name: ARMv7 build
+        working-directory: source
+        run: GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/station-airplay .
