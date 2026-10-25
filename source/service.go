@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.2.0"
+	version      = "Station airplay 1.3.0"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -217,10 +217,11 @@ func processExists(program string) bool {
 		if e != nil || len(cmd) == 0 {
 			continue
 		}
-		parts := bytes.SplitN(cmd, []byte{0}, 2)
-		first := filepath.Base(string(parts[0]))
-		if first == program {
-			return true
+		// Private libc loaders keep their own argv[0] in /proc/cmdline.
+		for _, part := range bytes.Split(cmd, []byte{0}) {
+			if filepath.Base(string(part)) == program {
+				return true
+			}
 		}
 	}
 	return false

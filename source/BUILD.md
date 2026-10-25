@@ -1,8 +1,36 @@
+## AirPlay 2 receivers (Station 2 / Mini 3 Pro, 1.3.0)
+
+Pinned source archives are in `third_party/`: Shairport Sync 5.6.2, NQPTP 1.2.9
+and FFmpeg 7.1.3. `airplay2-build.json` records source digests and exact Debian
+bookworm build package versions/archive digests for ARMhf and ARM64.
+
+Prepare a writable directory with `armhf/sysroot` and `arm64/sysroot`, extracting
+the listed Debian development/runtime packages (`dpkg-deb -x`). Provide private
+link-only `armhf/stock-libasound.so.2`, `armhf/stock-libdbus-1.so.3` and ARM64
+equivalents from the target firmware. Never distribute these captured files.
+Install matching GNU cross compilers, autotools, make, pkg-config, xxd, plistutil.
+
+```sh
+AP2_BUILD_ROOT=/absolute/build scripts/build-airplay2.sh armhf
+AP2_BUILD_ROOT=/absolute/build scripts/build-airplay2.sh arm64
+```
+
+The script normalises sysroot symlinks, builds minimal static FFmpeg and crypto,
+applies the documented HomePod model patch, and produces stripped binaries in
+`BUILD/ABI/output`. Runtime payloads are `runtime/ap2-armhf` and
+`runtime/ap2-aarch64`: bin/{shairport-sync,nqptp}, lib/{private loader,libc.so.6,
+libm.so.6,libdl.so.2,libpthread.so.0,librt.so.1,libplist-2.0.so.3}. Resolve the
+matching Debian sysroot files when assembling these directories. Confirm ELF
+NEEDED/GLIBC versions and run each binary with its private loader on the device.
+Stock ALSA and D-Bus must resolve from /usr/lib:/lib. No host runtime files or
+device dumps should enter the package. Rebuild Go and namespace helper below,
+then `python3 scripts/package.py --model station2` or `--model mini3pro`.
+
 ## Local build (Go supervisor only)
 
 Requires Go >=1.23 on Mac/Linux; no external Go modules.
 
-## Multi-model package (1.2.0)
+## Go supervisor and existing runtime
 
 Build on Linux, or cross-compile Go on Windows with GOOS=linux and run Linux
 tests in WSL. The C helper is outside the Go package and never requires cgo.

@@ -1,8 +1,8 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "1.2.0"
+version = "1.3.0"
 entry = "bin/launch.sh"
-description = "AirPlay receiver: Light 2 (AirPlay 2), Station 2 and Mini 3 Pro (AirPlay 1, shared audio with Alice)."
+description = "AirPlay 2 receiver: Light 2, Station 2 and Mini 3 Pro; shared audio with Alice on Station 2/Mini 3 Pro."
 permissions = ["exec", "clock", "led"]
 
 [launch]

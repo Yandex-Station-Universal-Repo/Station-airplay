@@ -30,7 +30,9 @@ jobs:
       - name: Namespace helper syntax
         run: gcc -fsyntax-only -Wall -Wextra -Werror support/avahi-namespace.c
       - name: Package
-        run: python3 scripts/package.py
+        run: |
+          python3 scripts/package.py
+          python3 tests/test_package_variants.py
       - uses: actions/upload-artifact@v4
         with:
           name: station-airplay-yap

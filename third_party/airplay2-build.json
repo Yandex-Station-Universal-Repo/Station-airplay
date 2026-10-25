@@ -1,0 +1,409 @@
+{
+  "sources": {
+    "shairport-sync-5.6.2.tar.gz": {
+      "sha256": "0747706e19a64ec550ec8a6a5c26bf8e231a4d032de31644f5a5daa0632c41c4"
+    },
+    "nqptp-1.2.9.tar.gz": {
+      "sha256": "6aa1d73b8ee760bf19378c319db0d0537a867ff961764b150e19f87d96a02210"
+    },
+    "ffmpeg-7.1.3.tar.xz": {
+      "sha256": "f0bf043299db9e3caacb435a712fc541fbb07df613c4b893e8b77e67baf3adbe"
+    }
+  },
+  "build_packages": {
+    "armhf": [
+      {
+        "Package": "libasound2",
+        "Version": "1.2.8-1+b1",
+        "Source": "alsa-lib (1.2.8-1)",
+        "Filename": "pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_armhf.deb",
+        "SHA256": "97718ff5e552c9a7b9e77e8debbe219b0068a9ab5dcabedd0800c69dd8f0eb96"
+      },
+      {
+        "Package": "libasound2-dev",
+        "Version": "1.2.8-1+b1",
+        "Source": "alsa-lib (1.2.8-1)",
+        "Filename": "pool/main/a/alsa-lib/libasound2-dev_1.2.8-1+b1_armhf.deb",
+        "SHA256": "acbe234a3a0298bf07dcb30034eb17ee92392c894a5f445f18de48ea8bad8c13"
+      },
+      {
+        "Package": "libavahi-client-dev",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-client-dev_0.8-10+deb12u1_armhf.deb",
+        "SHA256": "9907e9ef4e74e753d84cc82d9e9af8dd72a0dd4f940e8c07e70513d9c3cf4af1"
+      },
+      {
+        "Package": "libavahi-client3",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-client3_0.8-10+deb12u1_armhf.deb",
+        "SHA256": "0dc607c6c5a5ed9304d5c8e01a25ba948acf22c0cd3e650c70685e68ee072461"
+      },
+      {
+        "Package": "libavahi-common-dev",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-common-dev_0.8-10+deb12u1_armhf.deb",
+        "SHA256": "edb1bed83ac40ef77b45c2d8fea47e3a39136aea662bda90fae880da87043a43"
+      },
+      {
+        "Package": "libavahi-common3",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-common3_0.8-10+deb12u1_armhf.deb",
+        "SHA256": "9672c7a7cbe251b8a93e48f006def6d19f875073411f27eb5c5c59f8706d94a7"
+      },
+      {
+        "Package": "libdbus-1-3",
+        "Version": "1.14.10-1~deb12u1",
+        "Source": "dbus",
+        "Filename": "pool/main/d/dbus/libdbus-1-3_1.14.10-1~deb12u1_armhf.deb",
+        "SHA256": "758e489c2f937e4a1d272c8079e97505bb0e75f4dbd4bf9aababdefe7101e8c4"
+      },
+      {
+        "Package": "libdbus-1-dev",
+        "Version": "1.14.10-1~deb12u1",
+        "Source": "dbus",
+        "Filename": "pool/main/d/dbus/libdbus-1-dev_1.14.10-1~deb12u1_armhf.deb",
+        "SHA256": "42527a2c12b3eea8f12801fe3ab0f485da1949163fc813cbc00d66d9cbb27317"
+      },
+      {
+        "Package": "libgcc-s1",
+        "Version": "12.2.0-14+deb12u1",
+        "Source": "gcc-12",
+        "Filename": "pool/main/g/gcc-12/libgcc-s1_12.2.0-14+deb12u1_armhf.deb",
+        "SHA256": "f58562bf01efd6112b914182147ee149e0d4c90869046e31844da8803669eeb3"
+      },
+      {
+        "Package": "libc6",
+        "Version": "2.36-9+deb12u14",
+        "Source": "glibc",
+        "Filename": "pool/main/g/glibc/libc6_2.36-9+deb12u14_armhf.deb",
+        "SHA256": "758c68b92654747025b48476a45c315bf16df1321224abdd9be672bfd120be45"
+      },
+      {
+        "Package": "libc6-dev",
+        "Version": "2.36-9+deb12u14",
+        "Source": "glibc",
+        "Filename": "pool/main/g/glibc/libc6-dev_2.36-9+deb12u14_armhf.deb",
+        "SHA256": "ca9486dc7f2dfb25c61c0c93d561c01f8abdf9866bd4c157f0ccd518295bbbb7"
+      },
+      {
+        "Package": "libconfig-dev",
+        "Version": "1.5-0.4",
+        "Source": "libconfig",
+        "Filename": "pool/main/libc/libconfig/libconfig-dev_1.5-0.4_armhf.deb",
+        "SHA256": "0b35a06710a1269563e27153466c6f3a363f9d69878184745317e16b437fe7b3"
+      },
+      {
+        "Package": "libconfig9",
+        "Version": "1.5-0.4",
+        "Source": "libconfig",
+        "Filename": "pool/main/libc/libconfig/libconfig9_1.5-0.4_armhf.deb",
+        "SHA256": "bc6aa4a48c3ed52ea60e381ac42ce9a2fbe66ccdb9c88526d6b2559171f844f9"
+      },
+      {
+        "Package": "libgcrypt20",
+        "Version": "1.10.1-3+deb12u1",
+        "Filename": "pool/main/libg/libgcrypt20/libgcrypt20_1.10.1-3+deb12u1_armhf.deb",
+        "SHA256": "e217694621014cbb2849c2d9fd49e3a9ce9219c67c244286f35d277300a07b6f"
+      },
+      {
+        "Package": "libgcrypt20-dev",
+        "Version": "1.10.1-3+deb12u1",
+        "Source": "libgcrypt20",
+        "Filename": "pool/main/libg/libgcrypt20/libgcrypt20-dev_1.10.1-3+deb12u1_armhf.deb",
+        "SHA256": "b2e687b392871832cb37ae0815a41859ae139e2b3e6544e671333cab1345eeb0"
+      },
+      {
+        "Package": "libgpg-error-dev",
+        "Version": "1.46-1",
+        "Source": "libgpg-error",
+        "Filename": "pool/main/libg/libgpg-error/libgpg-error-dev_1.46-1_armhf.deb",
+        "SHA256": "112185bf23990175d4f7e6fc1017c52313523396b9e213ad949c1cf6cf6274a8"
+      },
+      {
+        "Package": "libgpg-error0",
+        "Version": "1.46-1",
+        "Source": "libgpg-error",
+        "Filename": "pool/main/libg/libgpg-error/libgpg-error0_1.46-1_armhf.deb",
+        "SHA256": "caa6ee2f9d1e5d7cd21a2bf712be8c836766cfa4fc76853feca7c4e69ec9b7ac"
+      },
+      {
+        "Package": "libplist-dev",
+        "Version": "2.2.0-6+b2",
+        "Source": "libplist (2.2.0-6)",
+        "Filename": "pool/main/libp/libplist/libplist-dev_2.2.0-6+b2_armhf.deb",
+        "SHA256": "570833e558c2c2d52d39f46b70e7c8181ff7389014044a8a78eb295ca436284d"
+      },
+      {
+        "Package": "libplist3",
+        "Version": "2.2.0-6+b2",
+        "Source": "libplist (2.2.0-6)",
+        "Filename": "pool/main/libp/libplist/libplist3_2.2.0-6+b2_armhf.deb",
+        "SHA256": "bc39f39abf2a652827ded7b440400810d62090b355dd1a6ad2b82059a8a24387"
+      },
+      {
+        "Package": "libsodium-dev",
+        "Version": "1.0.18-1+deb12u1",
+        "Source": "libsodium",
+        "Filename": "pool/main/libs/libsodium/libsodium-dev_1.0.18-1+deb12u1_armhf.deb",
+        "SHA256": "5a4ed1bcfe6567a736d088ab4ec66a72b59ad7d7e4d1f0647ee61d9bbd9a59aa"
+      },
+      {
+        "Package": "libsodium23",
+        "Version": "1.0.18-1+deb12u1",
+        "Source": "libsodium",
+        "Filename": "pool/main/libs/libsodium/libsodium23_1.0.18-1+deb12u1_armhf.deb",
+        "SHA256": "d609cf0825221940e4f11f516a563546f8aa2921844b6c044d1729aac11699b6"
+      },
+      {
+        "Package": "linux-libc-dev",
+        "Version": "6.1.176-1",
+        "Source": "linux",
+        "Filename": "pool/main/l/linux/linux-libc-dev_6.1.176-1_armhf.deb",
+        "SHA256": "5641c2f8c252bacc210abb9456deb4344357ccf32ca5821cb8ffe3a9a193a1fb"
+      },
+      {
+        "Package": "libssl-dev",
+        "Version": "3.0.20-1~deb12u2",
+        "Source": "openssl",
+        "Filename": "pool/main/o/openssl/libssl-dev_3.0.20-1~deb12u2_armhf.deb",
+        "SHA256": "2454498e072aa19108c906e9a5e45c3dfc2c80266fe02cf7fd278b27d6faf0b5"
+      },
+      {
+        "Package": "libssl3",
+        "Version": "3.0.20-1~deb12u2",
+        "Source": "openssl",
+        "Filename": "pool/main/o/openssl/libssl3_3.0.20-1~deb12u2_armhf.deb",
+        "SHA256": "8e7bfa25f6be0b5b0257e093ffad36f6ccb72f51ead97d8b7e78fafac59184a4"
+      },
+      {
+        "Package": "libpopt-dev",
+        "Version": "1.19+dfsg-1",
+        "Source": "popt",
+        "Filename": "pool/main/p/popt/libpopt-dev_1.19+dfsg-1_armhf.deb",
+        "SHA256": "9e4df741ff0982bcb245505668be0cbb4ed4297a2114bf30edd2869bc538e195"
+      },
+      {
+        "Package": "libpopt0",
+        "Version": "1.19+dfsg-1",
+        "Source": "popt",
+        "Filename": "pool/main/p/popt/libpopt0_1.19+dfsg-1_armhf.deb",
+        "SHA256": "eb086172a78dbdd8cb4b9e0e572589d9817c750969515c1b6bc9f62a35252963"
+      },
+      {
+        "Package": "libuuid1",
+        "Version": "2.38.1-5+deb12u3",
+        "Source": "util-linux",
+        "Filename": "pool/main/u/util-linux/libuuid1_2.38.1-5+deb12u3_armhf.deb",
+        "SHA256": "8e7bdaf72a70a29520cae0d3da81ab814a6954b17dedd33d68b7eebcdc9de56c"
+      },
+      {
+        "Package": "uuid-dev",
+        "Version": "2.38.1-5+deb12u3",
+        "Source": "util-linux",
+        "Filename": "pool/main/u/util-linux/uuid-dev_2.38.1-5+deb12u3_armhf.deb",
+        "SHA256": "b0fe433cc47d29789c25bf60745f108e17e757d8f20fa60f04c04f372d9be907"
+      }
+    ],
+    "arm64": [
+      {
+        "Package": "libasound2",
+        "Version": "1.2.8-1+b1",
+        "Source": "alsa-lib (1.2.8-1)",
+        "Filename": "pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_arm64.deb",
+        "SHA256": "9fa889400fcee4b92c8f4a2fafbb7f2cd33444d9ec1665a71002ab67c06114bb"
+      },
+      {
+        "Package": "libasound2-dev",
+        "Version": "1.2.8-1+b1",
+        "Source": "alsa-lib (1.2.8-1)",
+        "Filename": "pool/main/a/alsa-lib/libasound2-dev_1.2.8-1+b1_arm64.deb",
+        "SHA256": "263668e5ce831d3a8426bd342beba7e94925e893a4a5a285252b8f3ed6b3f5ee"
+      },
+      {
+        "Package": "libavahi-client-dev",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-client-dev_0.8-10+deb12u1_arm64.deb",
+        "SHA256": "86f7d731c5c4c66b0ed264fe00a7e879ecdc757e5c5a01a497a5251e8c3444f2"
+      },
+      {
+        "Package": "libavahi-client3",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-client3_0.8-10+deb12u1_arm64.deb",
+        "SHA256": "1bd0aa97b536ae39a90a44988b4fbb903352aa7c91d7cd914727b82f39ff0d81"
+      },
+      {
+        "Package": "libavahi-common-dev",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-common-dev_0.8-10+deb12u1_arm64.deb",
+        "SHA256": "e7211c168620f18a756f4c6eb43174811b951c9da910d539d39b3c590462b782"
+      },
+      {
+        "Package": "libavahi-common3",
+        "Version": "0.8-10+deb12u1",
+        "Source": "avahi",
+        "Filename": "pool/main/a/avahi/libavahi-common3_0.8-10+deb12u1_arm64.deb",
+        "SHA256": "f55666f45c6ccf6853fd444524ff2c255292cbb3c5b49d8aa0afffa3510a9d9f"
+      },
+      {
+        "Package": "libdbus-1-3",
+        "Version": "1.14.10-1~deb12u1",
+        "Source": "dbus",
+        "Filename": "pool/main/d/dbus/libdbus-1-3_1.14.10-1~deb12u1_arm64.deb",
+        "SHA256": "2a423794f44ee756f70fda67c6e47b15afe3dd22cd69e51f5d14d2ec9538f806"
+      },
+      {
+        "Package": "libdbus-1-dev",
+        "Version": "1.14.10-1~deb12u1",
+        "Source": "dbus",
+        "Filename": "pool/main/d/dbus/libdbus-1-dev_1.14.10-1~deb12u1_arm64.deb",
+        "SHA256": "817caa440feee88d53dd74432ce633af8d351552cd71014bcc8c98380c9ed88c"
+      },
+      {
+        "Package": "libgcc-s1",
+        "Version": "12.2.0-14+deb12u1",
+        "Source": "gcc-12",
+        "Filename": "pool/main/g/gcc-12/libgcc-s1_12.2.0-14+deb12u1_arm64.deb",
+        "SHA256": "576926b283613db80168ddf76380a3bd877602778cf0d226caa7bfbfa71eacf3"
+      },
+      {
+        "Package": "libc6",
+        "Version": "2.36-9+deb12u14",
+        "Source": "glibc",
+        "Filename": "pool/main/g/glibc/libc6_2.36-9+deb12u14_arm64.deb",
+        "SHA256": "01f4330719fd4f65580e16ea5a0527f372fca750e8f588d26deaf09f2d3b1cf4"
+      },
+      {
+        "Package": "libc6-dev",
+        "Version": "2.36-9+deb12u14",
+        "Source": "glibc",
+        "Filename": "pool/main/g/glibc/libc6-dev_2.36-9+deb12u14_arm64.deb",
+        "SHA256": "8bc395bf2ee9939f1a6ae395f974cffdcf541d98f99adfe89ce7e4bef36d159e"
+      },
+      {
+        "Package": "libconfig-dev",
+        "Version": "1.5-0.4",
+        "Source": "libconfig",
+        "Filename": "pool/main/libc/libconfig/libconfig-dev_1.5-0.4_arm64.deb",
+        "SHA256": "571cb782d2748e8bee0937e332af9391b09adad2dc2f88e2abdc61a62e3c26e6"
+      },
+      {
+        "Package": "libconfig9",
+        "Version": "1.5-0.4",
+        "Source": "libconfig",
+        "Filename": "pool/main/libc/libconfig/libconfig9_1.5-0.4_arm64.deb",
+        "SHA256": "81ca6efcfe714a0e5a1da7b8695807b0e5cea704990cc728aa8de878830c0544"
+      },
+      {
+        "Package": "libgcrypt20",
+        "Version": "1.10.1-3+deb12u1",
+        "Filename": "pool/main/libg/libgcrypt20/libgcrypt20_1.10.1-3+deb12u1_arm64.deb",
+        "SHA256": "140af58350c9b15bfa611000d9e0205528bbed2cba39271bf12bd36de2678f2e"
+      },
+      {
+        "Package": "libgcrypt20-dev",
+        "Version": "1.10.1-3+deb12u1",
+        "Source": "libgcrypt20",
+        "Filename": "pool/main/libg/libgcrypt20/libgcrypt20-dev_1.10.1-3+deb12u1_arm64.deb",
+        "SHA256": "d75117607bf96439126876dc0c5943570b0d0db97fae64d114338b67ea829918"
+      },
+      {
+        "Package": "libgpg-error-dev",
+        "Version": "1.46-1",
+        "Source": "libgpg-error",
+        "Filename": "pool/main/libg/libgpg-error/libgpg-error-dev_1.46-1_arm64.deb",
+        "SHA256": "5ef96c197db9128b5a8b1c1b1f026abea6b0595f516866039363e5f1ee8843fc"
+      },
+      {
+        "Package": "libgpg-error0",
+        "Version": "1.46-1",
+        "Source": "libgpg-error",
+        "Filename": "pool/main/libg/libgpg-error/libgpg-error0_1.46-1_arm64.deb",
+        "SHA256": "aff6ce011ae9abf7090e906f0cf6bc2b447bbc4cc7e03ff117f9d73528857352"
+      },
+      {
+        "Package": "libplist-dev",
+        "Version": "2.2.0-6+b2",
+        "Source": "libplist (2.2.0-6)",
+        "Filename": "pool/main/libp/libplist/libplist-dev_2.2.0-6+b2_arm64.deb",
+        "SHA256": "f0910eab60b4fe58d6ef36e11659992fb2f443d4bf81d729a1d3066e4a92fdd7"
+      },
+      {
+        "Package": "libplist3",
+        "Version": "2.2.0-6+b2",
+        "Source": "libplist (2.2.0-6)",
+        "Filename": "pool/main/libp/libplist/libplist3_2.2.0-6+b2_arm64.deb",
+        "SHA256": "c8db7555c508b4c595f8b2630e60cf48ab7909a1917bd5a296cf0c41256ccc48"
+      },
+      {
+        "Package": "libsodium-dev",
+        "Version": "1.0.18-1+deb12u1",
+        "Source": "libsodium",
+        "Filename": "pool/main/libs/libsodium/libsodium-dev_1.0.18-1+deb12u1_arm64.deb",
+        "SHA256": "6713440c957b2581bc7deab164ea99e80eab784c1004080c7a034fe6d95d178a"
+      },
+      {
+        "Package": "libsodium23",
+        "Version": "1.0.18-1+deb12u1",
+        "Source": "libsodium",
+        "Filename": "pool/main/libs/libsodium/libsodium23_1.0.18-1+deb12u1_arm64.deb",
+        "SHA256": "9ba45ca22ac46604f1ac2a48cd1dc9f38f8e72bcd84e51f65be2c89400017d7d"
+      },
+      {
+        "Package": "linux-libc-dev",
+        "Version": "6.1.176-1",
+        "Source": "linux",
+        "Filename": "pool/main/l/linux/linux-libc-dev_6.1.176-1_arm64.deb",
+        "SHA256": "eeca5ec13bed7206f8171fab9a48e84119dcc20cc79557f104628447a524ad10"
+      },
+      {
+        "Package": "libssl-dev",
+        "Version": "3.0.20-1~deb12u2",
+        "Source": "openssl",
+        "Filename": "pool/main/o/openssl/libssl-dev_3.0.20-1~deb12u2_arm64.deb",
+        "SHA256": "c6941a83bebd83d2a1cd2db56418062d8f48b3200786aacafa194b75a93a3702"
+      },
+      {
+        "Package": "libssl3",
+        "Version": "3.0.20-1~deb12u2",
+        "Source": "openssl",
+        "Filename": "pool/main/o/openssl/libssl3_3.0.20-1~deb12u2_arm64.deb",
+        "SHA256": "a256e03cc3abd7243ac5c6ee91a9deb56478221ef0d3c2b0748551e13140c0bf"
+      },
+      {
+        "Package": "libpopt-dev",
+        "Version": "1.19+dfsg-1",
+        "Source": "popt",
+        "Filename": "pool/main/p/popt/libpopt-dev_1.19+dfsg-1_arm64.deb",
+        "SHA256": "aa39321d54cf153281da53f745b9e8b77ff7634aa0525493e53b594b17b000c1"
+      },
+      {
+        "Package": "libpopt0",
+        "Version": "1.19+dfsg-1",
+        "Source": "popt",
+        "Filename": "pool/main/p/popt/libpopt0_1.19+dfsg-1_arm64.deb",
+        "SHA256": "636165b8135fe303ea00ae6d30841b65dabbc5c4fff56083d431d8bb669350e9"
+      },
+      {
+        "Package": "libuuid1",
+        "Version": "2.38.1-5+deb12u3",
+        "Source": "util-linux",
+        "Filename": "pool/main/u/util-linux/libuuid1_2.38.1-5+deb12u3_arm64.deb",
+        "SHA256": "3b2d19df0f3190108cf54228c4cfc822226c06d8f3615a5ab16a7dffb1f58aed"
+      },
+      {
+        "Package": "uuid-dev",
+        "Version": "2.38.1-5+deb12u3",
+        "Source": "util-linux",
+        "Filename": "pool/main/u/util-linux/uuid-dev_2.38.1-5+deb12u3_arm64.deb",
+        "SHA256": "681d5cb85435b9c9e5b7798d86b508ba930e3cbc599bd550446ba12780e4f3e6"
+      }
+    ]
+  }
+}

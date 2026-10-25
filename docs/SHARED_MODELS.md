@@ -1,13 +1,13 @@
 # Station 2 и Mini 3 Pro через общий YAM-плагин
 
-Версия 1.2.0 добавляет два профиля в существующий `station-airplay`. Это
-**AirPlay 1**, сохраняющий проверенный приём аудио; Plum остаётся AirPlay 2.
+Версия 1.3.0 переводит оба профиля в существующем `station-airplay` на
+**AirPlay 2**. Сборка, частота 48 кГц, протокол и границы проверки: [AIRPLAY2.md](AIRPLAY2.md).
 RGB/сегментный renderer Plum не переносится на другие модели догадками.
 
 | YAM model | Проверенная прошивка | Receiver ABI / системные библиотеки | PCM |
 |---|---|---|---|
-| `yandexstation_2` | `0.369.1.50.4794649087.20261021.295` | ARMhf, OpenSSL 1.1 | `plug:dmix_spk`, 44.1 kHz S16_LE |
-| `yandexmini_3_pro` | `0.369.1.50.4795647264.20261021.107` | AArch64, OpenSSL 3 | `speakers`, 44.1 kHz S16_LE |
+| `yandexstation_2` | `0.369.1.50.4794649087.20261021.295` | ARMhf, private libc + static crypto | `plug:dmix_spk`, 48 kHz S16_LE |
+| `yandexmini_3_pro` | `0.369.1.50.4795647264.20261021.107` | AArch64, private libc + static crypto | `speakers`, 48 kHz S16_LE |
 
 Обе используют статический AArch64 Go supervisor, YAM 0.1.13 и штатные
 `/usr/bin/dbus-daemon`, `/usr/bin/dbus-send`. Не делайте вывод о совместимости с
@@ -39,7 +39,7 @@ firewall и настройки ALSA не изменяются. Для друго
 колонки, куда передан архив:
 
 ```sh
-yam install /path/to/station-airplay-1.2.0.yap
+yam install /path/to/station-airplay-1.3.0-station2.yap
 yam enable station-airplay
 yam ps
 yam logs station-airplay
@@ -92,7 +92,7 @@ Helper откажет, если другой receiver ещё работает; �
 service.sh и запустит прежний сервис. После проверки можно удалить YAM-пакет.
 Не удаляйте старые файлы и backup до подтверждения воспроизведения владельцем.
 
-## Аппаратная проверка 2026-10-25
+## Историческая проверка AirPlay 1 / 1.2.0 (2026-10-25)
 
 На обеих моделях до миграции прошёл один 8-секундный PCM/RAOP поток. После
 установки через API YAM прошли по два последовательных 8-секундных потока с

@@ -1,0 +1,11 @@
+--- a/shairport.c
++++ b/shairport.c
+@@ -593,7 +593,7 @@
+                                              // seconds then we can add an offset of 5.17 seconds and still leave a second's worth of buffers
+                                              // for unexpected circumstances
+ 
+-  config.model = strdup("ShairportSync");
++  config.model = strdup("AudioAccessory1,1");
+   // config.model = strdup("AirPort10,115");
+   //  config.model = strdup("AudioAccessory5,1");
+ 

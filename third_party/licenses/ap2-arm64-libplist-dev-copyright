@@ -1,0 +1,165 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: libplist
+Upstream-Contact: https://github.com/libimobiledevice/libplist/issues
+Source: https://cgit.libimobiledevice.org/libplist.git/
+
+Files: *
+Copyright:
+ Copyright (C) 2008 Zach C. All Rights Reserved
+ Copyright (C) 2008 Jonathan Beck All Rights Reserved
+ Copyright (c) 2011 Nikias Bassen, All Rights Reserved
+ Copyright (c) 2011 Joshua Hill
+License: LGPL-2.1+
+Comment: A full contributor list can be found in the AUTHORS file.
+
+Files: include/plist/Array.h
+ include/plist/Boolean.h
+ include/plist/Data.h
+ include/plist/Date.h
+ include/plist/Dictionary.h
+ include/plist/Integer.h
+ include/plist/Node.h
+ include/plist/Real.h
+ include/plist/String.h
+ include/plist/Structure.h
+ include/plist/plist++.h
+ src/Array.cpp
+ src/Boolean.cpp
+ src/Data.cpp
+ src/Date.cpp
+ src/Dictionary.cpp
+ src/Integer.cpp
+ src/Node.cpp
+ src/Real.cpp
+ src/String.cpp
+ src/Structure.cpp
+ test/plist_cmp.c
+ test/plist_test.c
+Copyright: 2009, Jonathan Beck
+License: LGPL-2.1+
+
+Files: fuzz/bplist_fuzzer.cc
+ fuzz/xplist_fuzzer.cc
+ include/plist/Key.h
+ include/plist/Uid.h
+ src/Key.cpp
+ src/Uid.cpp
+ src/base64.c
+ src/base64.h
+ src/bytearray.c
+ src/bytearray.h
+ src/hashtable.c
+ src/hashtable.h
+ src/ptrarray.c
+ src/ptrarray.h
+ src/strbuf.h
+Copyright: 2011, Nikias Bassen
+  2011-2016, Nikias Bassen
+  2011-2019, Nikias Bassen
+  2012, Nikias Bassen
+  2016, Nikias Bassen
+  2017, Nikias Bassen
+License: LGPL-2.1+
+
+Files: libcnary/cnary.c
+ libcnary/include/node.h
+ libcnary/include/node_list.h
+ libcnary/include/object.h
+ libcnary/node.c
+ libcnary/node_list.c
+Copyright: 2011, Joshua Hill.
+License: LGPL-2.1+
+
+Files: m4/ax_python_devel.m4
+Copyright: 2009, Alan W. Irwin
+  2009, Andrew Collier
+  2009, Horst Knorr <hk_classes@knoda.org>
+  2009, Matteo Settenvini <matteo@member.fsf.org>
+  2009, Rafael Laboissiere <rafael@laboissiere.net>
+  2009, Sebastian Huber <sebastian-huber@web.de>
+  2013, Daniel Mullner <muellner@math.stanford.edu>
+License: GPL-3+
+
+Files: m4/ax_pthread.m4
+Copyright: 2008, Steven G. Johnson <stevenj@alum.mit.edu>
+  2011, Daniel Richard G. <skunk@iSKUNK.ORG>
+License: GPL-3+
+
+Files: src/xplist.c
+Copyright: 2008, Jonathan Beck
+  2010-2015, Martin Szulecki
+  2010-2017, Nikias Bassen
+License: LGPL-2.1+
+
+Files: src/plist.c
+Copyright: 2008, Zach C.
+  2009-2019, Nikias Bassen
+  2010-2015, Martin Szulecki
+License: LGPL-2.1+
+
+Files: tools/plistutil.c
+Copyright: 2008, Zach C.
+  2009-2015, Martin Szulecki
+License: LGPL-2.1+
+
+Files: src/plist.h
+Copyright: 2008, Zach C.
+License: LGPL-2.1+
+
+Files: src/time64.c
+ src/time64.h
+ src/time64_limits.h
+Copyright: 2007-2010, Michael G Schwern
+License: Expat
+
+Files: debian/*
+Copyright: (C) 2009 Bradley Smith <bradsmith@debian.org>
+           2018, Boyuan Yang <073plan@gmail.com>
+License: GPL-3+
+
+License: GPL-3+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ can be found in `/usr/share/common-licenses/GPL-3'.
+
+License: LGPL-2.1+
+ This package is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+ .
+ On Debian GNU/Linux systems, the complete text of the GNU Lesser General
+ Public License can be found in `/usr/share/common-licenses/LGPL-2.1'.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.

@@ -4,3 +4,4 @@
 *.c text eol=lf
 *.toml text eol=lf
 *.md text eol=lf
+*.patch text eol=lf

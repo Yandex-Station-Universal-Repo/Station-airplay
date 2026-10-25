@@ -1,3 +1,30 @@
+# AirPlay 2 dependencies added in 1.3.0
+
+The complete unmodified upstream source archives for Shairport Sync 5.6.2,
+NQPTP 1.2.9 and FFmpeg 7.1.3 are kept here. The only receiver patch is
+`support/homepod-model.patch`. Build flags, private sysroot preparation and
+runtime assembly are documented in `source/BUILD.md` and
+`scripts/build-airplay2.sh`. These sources and build instructions allow
+rebuilding/relinking the receiver with modified LGPL libraries.
+
+Source origins: https://github.com/mikebrady/shairport-sync/tree/5.6.2,
+https://github.com/mikebrady/nqptp/tree/1.2.9,
+https://ffmpeg.org/releases/ffmpeg-7.1.3.tar.xz.
+`airplay2-build.json` pins source SHA256 and every Debian build package.
+Corresponding Debian source/patches are available at https://sources.debian.org/
+under the recorded Source/version, with historic archives at
+https://snapshot.debian.org/. `licenses/ap2-*` contains package copyright notices.
+Shairport uses GPL-3.0, NQPTP GPL-2.0, the selected FFmpeg configuration LGPL-2.1+;
+the distribution notices enumerate the other static and runtime library terms.
+No proprietary/captured stock library is redistributed. Shipped libc/libm/loader
+and libplist are the recorded Debian packages, isolated per process.
+
+Upstream source archives remain in this repository and are omitted from the
+speaker .yap to conserve flash. Keep the source and patch available alongside
+any binary redistribution. The legacy Plum provenance caveat below still applies.
+
+## Historical 1.2.0 dependencies
+
 # Added shared-audio dependencies
 
 The new Station 2/Mini 3 Pro profiles retain the previously hardware-tested

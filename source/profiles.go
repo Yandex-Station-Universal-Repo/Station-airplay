@@ -16,7 +16,7 @@ import (
 )
 
 // A model profile is an audio/ABI contract, not a marketing name or kernel arch.
-// These shared-audio profiles deliberately retain the proven AirPlay 1 backend.
+// AirPlay 2 receivers retain each model's proven shared ALSA device.
 type modelProfile struct {
 	Model, Name, PCM, ReceiverABI string
 }
@@ -121,12 +121,12 @@ func receiverConfig(p modelProfile) string {
  resync_threshold_in_seconds = 0.050;
  drift_tolerance_in_seconds = 0.002;
 };
-sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 20; };
+sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 60; };
 alsa = {
  output_device = %q;
- output_rate = 44100;
+ output_rate = 48000;
+ output_channels = 2;
  output_format = "S16_LE";
- use_precision_timing = "no";
  disable_standby_mode = "never";
 };
 metadata = { enabled = "no"; };
@@ -226,10 +226,17 @@ func serveShared(ctx context.Context, p modelProfile) error {
 		return fmt.Errorf("AirPlay port 5000 occupied; stop the previous receiver before migration: %w", err)
 	}
 	listener.Close()
-	for _, program := range []string{"shairport-sync", "shairport-sync-ap2", "airplayd"} {
+	for _, program := range []string{"shairport-sync", "shairport-sync-ap2", "airplayd", "nqptp"} {
 		if processExists(program) {
 			return fmt.Errorf("existing %s receiver must be stopped explicitly", program)
 		}
+	}
+	for _, port := range []int{319, 320, 9000} {
+		socket, e := net.ListenPacket("udp4", fmt.Sprintf(":%d", port))
+		if e != nil {
+			return fmt.Errorf("AirPlay 2 timing port UDP %d occupied: %w", port, e)
+		}
+		socket.Close()
 	}
 	conf := filepath.Join(state, "shairport.conf")
 	if err = os.WriteFile(conf, []byte(receiverConfig(p)), 0600); err != nil {
@@ -290,9 +297,8 @@ publish-addresses=no
 	env := audioEnv(os.Environ(), bus)
 	children := []*child{}
 	defer func() { stopChildren(children) }()
-	exits := make(chan exitInfo, 3)
-	launch := func(bin string, args ...string) error {
-		name := filepath.Base(bin)
+	exits := make(chan exitInfo, 4)
+	launch := func(name, bin string, args ...string) error {
 		file, e := os.OpenFile(filepath.Join(state, name+".log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 		if e != nil {
 			return e
@@ -325,7 +331,7 @@ publish-addresses=no
 		}()
 		return nil
 	}
-	if err = launch("/usr/bin/dbus-daemon", "--config-file="+filepath.Join(state, "bus.conf"), "--nofork"); err != nil {
+	if err = launch("dbus-daemon", "/usr/bin/dbus-daemon", "--config-file="+filepath.Join(state, "bus.conf"), "--nofork"); err != nil {
 		return err
 	}
 	ready := func(check func() bool) error {
@@ -352,7 +358,7 @@ publish-addresses=no
 		return err
 	}
 	rt := filepath.Join(root, "runtime", "aarch64")
-	if err = launch(filepath.Join(root, "bin/avahi-namespace-aarch64"), state,
+	if err = launch("avahi-namespace-aarch64", filepath.Join(root, "bin/avahi-namespace-aarch64"), state,
 		filepath.Join(rt, "lib/ld-linux-aarch64.so.1"), "--library-path", filepath.Join(rt, "lib"), filepath.Join(rt, "bin/avahi-daemon"),
 		"-f", filepath.Join(state, "avahi.conf"), "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title"); err != nil {
 		return err
@@ -368,10 +374,33 @@ publish-addresses=no
 	}); err != nil {
 		return err
 	}
-	if err = launch(filepath.Join(root, "receivers", p.ReceiverABI, "shairport-sync"), "-c", conf, "-v", "--statistics"); err != nil {
+	ap2 := filepath.Join(root, "runtime", "ap2-"+p.ReceiverABI)
+	loader := "ld-linux-aarch64.so.1"
+	if p.ReceiverABI == "armhf" {
+		loader = "ld-linux-armhf.so.3"
+	}
+	launchAP2 := func(name string, args ...string) error {
+		// Only this process uses the private libc; stock ALSA/D-Bus stay on device.
+		argv := []string{"--library-path", filepath.Join(ap2, "lib") + ":/usr/lib:/lib", filepath.Join(ap2, "bin", name)}
+		return launch(name, filepath.Join(ap2, "lib", loader), append(argv, args...)...)
+	}
+	if err = launchAP2("nqptp", "-v"); err != nil {
 		return err
 	}
-	fmt.Printf("%s model=%s protocol=AirPlay1 pcm=%s Alice=shared UI=off\n", version, p.Model, p.PCM)
+	if err = ready(func() bool {
+		socket, e := net.ListenPacket("udp4", "127.0.0.1:9000")
+		if e == nil {
+			socket.Close()
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if err = launchAP2("shairport-sync", "-c", conf, "-v", "--statistics"); err != nil {
+		return err
+	}
+	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.Model, p.PCM)
 	select {
 	case <-ctx.Done():
 		return nil

@@ -57,7 +57,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 				t.Fatalf("wrong ABI/audio contract: %+v", p)
 			}
 			conf := receiverConfig(p)
-			for _, s := range []string{tc.pcm, "port = 5000", "output_rate = 44100", "use_precision_timing = \"no\"", "session_timeout = 20"} {
+			for _, s := range []string{tc.pcm, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
 				if !strings.Contains(conf, s) {
 					t.Fatalf("lost known-working setting %q", s)
 				}
