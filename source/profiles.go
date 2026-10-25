@@ -71,7 +71,7 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 	return length, nil
 }
 
-func profileFor(d yamDevice) (modelProfile, error) {
+func sharedProfileFor(d yamDevice) (modelProfile, error) {
 	switch d.Model {
 	case "yandexstation_2":
 		return modelProfile{d.Model, "Yandex Station 2 AirPlay", "plug:dmix_spk", "armhf", "AudioAccessory1,1"}, nil
@@ -96,10 +96,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if d.Model == "plum" || d.Model == "yandexplum" {
+	if d.Model == "plum" || d.Model == "yandexplum" || d.Model == "yandexmidi" {
 		return runPlum(ctx)
 	}
-	p, err := profileFor(d)
+	p, err := sharedProfileFor(d)
 	if err != nil {
 		return err
 	}

@@ -49,7 +49,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
-			p, err := profileFor(yamDevice{Model: tc.model, Architecture: "aarch64"})
+			p, err := sharedProfileFor(yamDevice{Model: tc.model, Architecture: "aarch64"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		})
 	}
 	for _, model := range []string{"", "yandexmidi", "cucumber", "unknown", "yandexplum"} {
-		if _, err := profileFor(yamDevice{Model: model}); err == nil {
+		if _, err := sharedProfileFor(yamDevice{Model: model}); err == nil {
 			t.Fatalf("model %q guessed instead of rejected", model)
 		}
 	}

@@ -92,8 +92,8 @@ func (a *yamAPI) device() (yamDevice, error) {
 	err := a.request("GET", "/device", nil, &d)
 	return d, err
 }
-func (a *yamAPI) leds(colors [3]string) error {
-	return a.request("POST", "/led", map[string]interface{}{"colors": colors[:]}, nil)
+func (a *yamAPI) leds(colors []string) error {
+	return a.request("POST", "/led", map[string]interface{}{"colors": colors}, nil)
 }
 func (a *yamAPI) ledOff() error { return a.request("POST", "/led/off", map[string]interface{}{}, nil) }
 func (a *yamAPI) time(s string) error {
@@ -114,6 +114,49 @@ func feature(d yamDevice, name string) bool {
 	return false
 }
 
+// stationProfile is the per-model hardware layout. YAM reports the model and
+// features; everything else the renderer and audio setup need lives here.
+type stationProfile struct {
+	name   string
+	models []string
+	leds   int
+	// First clock digit index: Plum numbers digits 0..3, Midi 1..4.
+	digitBase int
+	colon     []string
+	// Quasar may keep running: audio goes through its shared dmix and the
+	// station volume stays canonical (needs the station-volume package for
+	// the sender's slider). Plum needs Alice stopped, as before.
+	quasarCoexist bool
+	// mDNS host name Quasar already answers for, "<prefix>-<serial>"; avahi
+	// reuses it without address records so the two responders do not loop.
+	mdnsHostPrefix string
+	// pipeOutput: shairport-sync writes PCM to a pipe that the system aplay
+	// plays on "speakers". The bundled (older) alsa-lib cannot attach to the
+	// dmix that Quasar's alsa-lib runs ("unable to create IPC shm instance").
+	pipeOutput bool
+}
+
+var (
+	plumProfile = stationProfile{name: "plum", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}}
+	midiProfile = stationProfile{name: "midi", models: []string{"yandexmidi"}, leds: 24, digitBase: 1, quasarCoexist: true, mdnsHostPrefix: "yandex-station-midi", pipeOutput: true}
+	profiles    = []stationProfile{plumProfile, midiProfile}
+	// hw is the detected profile; verifyYAM sets it before anything renders.
+	hw = plumProfile
+)
+
+func profileFor(model string) (stationProfile, bool) {
+	for _, p := range profiles {
+		for _, m := range p.models {
+			if m == model {
+				return p, true
+			}
+		}
+	}
+	return stationProfile{}, false
+}
+
+func quasarRunning() bool { return processExists("quasar_launcher2") || processExists("maind") }
+
 func readOldName() string {
 	return "Я.Станция"
 }
@@ -133,7 +176,11 @@ func hardwareID() (string, error) {
 	}
 	return "", errors.New("cannot read MAC address from wlan0 or eth0")
 }
-func createConfigs(root string) (string, string, error) {
+
+// stationVolume: the station's own volume (Quasar) is canonical and already
+// applied by the "speakers" softvol, so shairport-sync must not attenuate too;
+// the sender's slider is forwarded to the station instead (stationVolumeSync).
+func createConfigs(root string, stationVolume bool) (string, string, error) {
 	mac, e := hardwareID()
 	if e != nil {
 		return "", "", e
@@ -144,12 +191,19 @@ func createConfigs(root string) (string, string, error) {
 	}
 	// Identical ALSA FIFO tee as stable Plum 1.1.3, but no hardware UI process.
 	out := "sps_out"
-	if b, e := os.ReadFile("/etc/asound.conf"); e == nil && strings.Contains(string(b), "pcm.speakers") {
+	if hw.pipeOutput {
+		// The FIFO tee carries the audio; the supervisor plays it (playPipe).
+		// The null sink never blocks: the FIFO and aplay pace the stream.
+		out = "sps_null"
+	} else if b, e := os.ReadFile("/etc/asound.conf"); e == nil && strings.Contains(string(b), "pcm.speakers") {
 		out = "speakers"
 	}
 	alsa := fmt.Sprintf(`pcm.sps_out {
  type plug
  slave { pcm "hw:0,0"; rate 48000 }
+}
+pcm.sps_null {
+ type null
 }
 pcm.spk_file {
  type file
@@ -164,21 +218,36 @@ pcm.spk_tee {
 }
 `, out, audioFIFO)
 	name := readOldName()
+	ignoreVolume := "no"
+	if stationVolume {
+		ignoreVolume = "yes"
+	}
+	output := `drift_tolerance_in_seconds = 0.005;`
+	backend := `alsa = { output_device = "spk_tee"; output_format = "S16"; use_mmap_if_available = "no"; };`
+	if hw.pipeOutput {
+		// The null sink reports no latency and the real one is aplay's
+		// buffer; one speaker needs no sample-exact sync, so never resync
+		// (that would drop audio). Without explicit period and buffer sizes
+		// the null sink rejects shairport-sync's hw parameters (EINVAL).
+		output = `resync_threshold_in_seconds = 0;
+ drift_tolerance_in_seconds = 0.5;`
+		backend = fmt.Sprintf(`alsa = { output_device = "spk_tee"; output_format = "S16"; output_rate = %d; use_mmap_if_available = "no"; period_size = 1024; buffer_size = 8192; };`, pipeRate)
+	}
 	conf := fmt.Sprintf(`general = {
- name = "%s";
  output_backend = "alsa";
+ name = "%s";
+ %s
  mdns_backend = "avahi";
- drift_tolerance_in_seconds = 0.005;
- ignore_volume_control = "no";
+ ignore_volume_control = "%s";
  volume_range_db = 60;
  default_airplay_volume = -30.0;
  airplay_device_id = 0x%sL;
 };
-alsa = { output_device = "spk_tee"; output_format = "S16"; use_mmap_if_available = "no"; };
+%s
 sessioncontrol = { allow_session_interruption = "yes"; };
 diagnostics = { log_verbosity = 0; };
 metadata = { enabled = "yes"; include_cover_art = "no"; pipe_name = "%s"; };
-`, name, mac, metadataFIFO)
+`, name, output, ignoreVolume, mac, backend, metadataFIFO)
 	if e = os.WriteFile(filepath.Join(st, ".asoundrc"), []byte(alsa), 0600); e != nil {
 		return "", "", e
 	}
@@ -187,6 +256,45 @@ metadata = { enabled = "yes"; include_cover_art = "no"; pipe_name = "%s"; };
 		return "", "", e
 	}
 	return st, p, nil
+}
+
+// avahiConfig returns the avahi-daemon config for this model. With Quasar
+// running (Midi) its own mDNS responder already publishes the address records
+// as <prefix>-<serial>.local; a second responder with its own host name or
+// address records keeps renaming forever. So avahi takes the same host name
+// and only adds the AirPlay services.
+func avahiConfig(root, st string) (string, error) {
+	if hw.mdnsHostPrefix == "" || !quasarRunning() {
+		return filepath.Join(root, "config/avahi-daemon.conf"), nil
+	}
+	serial := ""
+	if b, e := os.ReadFile("/proc/cmdline"); e == nil {
+		for _, f := range strings.Fields(string(b)) {
+			if v, ok := strings.CutPrefix(f, "androidboot.serialno="); ok {
+				serial = v
+			}
+		}
+	}
+	if serial == "" {
+		return "", errors.New("cannot read the device serial for the mDNS host name")
+	}
+	conf := fmt.Sprintf(`[server]
+host-name=%s-%s
+use-ipv4=yes
+use-ipv6=no
+allow-interfaces=wlan0
+disallow-other-stacks=no
+enable-dbus=yes
+[wide-area]
+enable-wide-area=no
+[publish]
+publish-hinfo=no
+publish-workstation=no
+publish-addresses=no
+[rlimits]
+`, hw.mdnsHostPrefix, serial)
+	p := filepath.Join(st, "avahi-daemon.conf")
+	return p, os.WriteFile(p, []byte(conf), 0600)
 }
 func ensureFIFO(path string) (int, error) {
 	fi, e := os.Lstat(path)
@@ -226,13 +334,13 @@ func processExists(program string) bool {
 	}
 	return false
 }
-func preflight() error {
-	for _, program := range []string{"shairport-sync-ap2", "airplayd", "nqptp"} {
+func preflight(p stationProfile) error {
+	for _, program := range []string{"shairport-sync-ap2", "shairport-sync", "airplayd", "nqptp"} {
 		if processExists(program) {
-			return fmt.Errorf("legacy %s is still running; first run: adb shell sh /data/shairport/airplay.sh stop", program)
+			return fmt.Errorf("another AirPlay receiver (%s) is still running; stop it first", program)
 		}
 	}
-	if processExists("quasar_launcher2") || processExists("maind") {
+	if !p.quasarCoexist && quasarRunning() {
 		return errors.New("Quasar/Alice is running and may own ALSA. Stop it using the existing AirPlay-only procedure first")
 	}
 	ln, e := net.Listen("tcp4", ":7000")
@@ -308,6 +416,20 @@ type airplayState struct {
 	waveSmooth    float64
 	waveInit      bool
 	pcmFrames     uint64
+	// senderVolume: a pvol arrived from the sender since the last forward to
+	// the station volume (only used with the station-volume package).
+	senderVolume bool
+}
+
+// showVolume overlays a station-side volume change (buttons, Alice, app).
+func (s *airplayState) showVolume(percent int, now time.Time) {
+	s.volume = percent
+	s.volumeUntil = now.Add(1700 * time.Millisecond)
+}
+
+// inSession: an AirPlay stream is playing or paused, or a volume overlay shows.
+func (s *airplayState) inSession(now time.Time) bool {
+	return s.playing(now) || s.status == "paused" || now.Before(s.volumeUntil)
 }
 
 func (s *airplayState) onMetadata(typ, code string, raw []byte, now time.Time) {
@@ -340,6 +462,7 @@ func (s *airplayState) onMetadata(typ, code string, raw []byte, now time.Time) {
 			}
 			s.volume = n
 			s.volumeUntil = now.Add(1700 * time.Millisecond)
+			s.senderVolume = true
 		case "70626567", "70666c73", "7072736d", "70726573": // pbeg, pfls, prsm, pres
 			s.status = "playing"
 			s.progress.resume(now)
@@ -476,11 +599,15 @@ func hsv(h, v float64) string {
 	}
 	return fmt.Sprintf("#%02X%02X%02X", int(r*255), int(g*255), int(b*255))
 }
-func (s *airplayState) ringFrame(now time.Time) [3]string {
-	var frame [3]string
+
+// ringFrame renders hw.leds colours: a volume bar, a dim pause pattern, or the
+// spectrum (three bands spread around the ring; on the Plum one LED per band).
+func (s *airplayState) ringFrame(now time.Time) []string {
+	n := hw.leds
+	frame := make([]string, n)
 	if now.Before(s.volumeUntil) {
-		for i := 0; i < 3; i++ {
-			level := float64(s.volume)*3/100 - float64(i)
+		for i := 0; i < n; i++ {
+			level := float64(s.volume)*float64(n)/100 - float64(i)
 			if level < 0 {
 				level = 0
 			}
@@ -491,21 +618,25 @@ func (s *airplayState) ringFrame(now time.Time) [3]string {
 		}
 		return frame
 	}
-	if s.status == "paused" {
-		return [3]string{"#061425", "#082036", "#061425"}
-	}
-	if !s.playing(now) {
-		return [3]string{"#000000", "#000000", "#000000"}
-	}
-	for i := 0; i < 3; i++ {
-		lv := s.history[i]
-		v := .055 + math.Pow(lv, 1.3)*.9
-		frame[i] = hsv(float64(s.offset)*10+float64(i)*120+190, v)
+	for i := range frame {
+		switch {
+		case s.status == "paused" && i%2 == 1:
+			frame[i] = "#082036"
+		case s.status == "paused":
+			frame[i] = "#061425"
+		case !s.playing(now):
+			frame[i] = "#000000"
+		default:
+			lv := s.history[i*3/n]
+			v := .055 + math.Pow(lv, 1.3)*.9
+			frame[i] = hsv(float64(s.offset)*10+float64(i)*360/float64(n)+190, v)
+		}
 	}
 	return frame
 }
 
-// The Plum has 4 positions 0..3, segments A..G plus DH and DL colon.
+// Four digits A..G numbered from hw.digitBase (Plum 0..3, Midi 1..4), plus the
+// model's colon segments (Plum DH/DL; the Midi colon is drawn by YAM's time API).
 var digitFont = map[rune]byte{
 	'0': 0x3f, '1': 0x06, '2': 0x5b, '3': 0x4f, '4': 0x66, '5': 0x6d, '6': 0x7d, '7': 0x07, '8': 0x7f, '9': 0x6f,
 	'A': 0x77, 'B': 0x7c, 'C': 0x39, 'D': 0x5e, 'E': 0x79, 'F': 0x71, 'G': 0x3d, 'H': 0x76, 'I': 0x06,
@@ -523,16 +654,20 @@ func segmentsFor(text string, colon bool) map[string]uint8 {
 		mask := digitFont[runes[i]]
 		for j := 0; j < 7; j++ {
 			if mask&(1<<uint(j)) != 0 {
-				result[fmt.Sprintf("%c%d", 'A'+j, i)] = brightness
+				result[segment('A'+rune(j), i)] = brightness
 			}
 		}
 	}
 	if colon {
-		result["DH"] = brightness
-		result["DL"] = brightness
+		for _, c := range hw.colon {
+			result[c] = brightness
+		}
 	}
 	return result
 }
+
+// segment names part (A..G) of digit i (0..3) in the model's numbering.
+func segment(part rune, i int) string { return fmt.Sprintf("%c%d", part, i+hw.digitBase) }
 func (s *airplayState) display(now time.Time, tz *time.Location) (string, map[string]uint8) {
 	if now.Before(s.volumeUntil) {
 		return "", segmentsFor(fmt.Sprintf("%4d", s.volume), false)
@@ -549,12 +684,12 @@ func (s *airplayState) display(now time.Time, tz *time.Location) (string, map[st
 			idx := (s.wavePos - 1 - lag + len(s.wave)*2) % len(s.wave)
 			lv := s.wave[idx]
 			mid := uint8(math.Round(6 + lv*164))
-			result[fmt.Sprintf("G%d", digit)] = mid
+			result[segment('G', digit)] = mid
 			peak := math.Max(0, math.Min(1, (lv-.45)/.55))
 			v := uint8(math.Round(peak * peak * float64(brightness)))
 			if v > 0 {
-				result[fmt.Sprintf("A%d", digit)] = v
-				result[fmt.Sprintf("D%d", digit)] = v
+				result[segment('A', digit)] = v
+				result[segment('D', digit)] = v
 			}
 		}
 		return "", result
@@ -608,20 +743,37 @@ func logAPIError(name string, e error, last *time.Time) {
 		*last = time.Now()
 	}
 }
-func verifyYAM(api *yamAPI) error {
+
+// detectProfile reads the model from YAM without touching hardware.
+func detectProfile(api *yamAPI) (stationProfile, error) {
 	d, e := api.device()
 	if e != nil {
-		return fmt.Errorf("YAM runtime API failed: %w", e)
+		return stationProfile{}, fmt.Errorf("YAM runtime API failed: %w", e)
 	}
-	if d.Model != "yandexplum" && d.Model != "plum" {
-		return fmt.Errorf("YAM detected model %q, expected Yandex Station Light 2", d.Model)
+	p, ok := profileFor(d.Model)
+	if !ok {
+		return stationProfile{}, fmt.Errorf("YAM detected model %q; supported: Station Light 2 (plum), Station Midi", d.Model)
 	}
-	for _, f := range []string{"display.clock.segment.v1", "led.ring.rgb", "led.ring.3"} {
+	for _, f := range []string{"display.clock.segment.v1", "led.ring.rgb", fmt.Sprintf("led.ring.%d", p.leds)} {
 		if !feature(d, f) {
-			return fmt.Errorf("YAM profile missing %s; configure LED profile plum with count=3 and enable clock support", f)
+			return stationProfile{}, fmt.Errorf("YAM profile missing %s for %s", f, p.name)
 		}
 	}
-	if e = api.leds([3]string{"#000000", "#000000", "#000000"}); e != nil {
+	return p, nil
+}
+
+// verifyYAM selects the profile (hw) and checks that the ring and clock accept writes.
+func verifyYAM(api *yamAPI) error {
+	p, e := detectProfile(api)
+	if e != nil {
+		return e
+	}
+	hw = p
+	off := make([]string, hw.leds)
+	for i := range off {
+		off[i] = "#000000"
+	}
+	if e = api.leds(off); e != nil {
 		return fmt.Errorf("YAM RGB ring preflight failed: %w", e)
 	}
 	if e = api.time(time.Now().In(clockZone()).Format("15:04")); e != nil {
@@ -657,7 +809,22 @@ func runPlum(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	if e = waitForReady(ctx, "AirPlay audio ownership", 32*time.Second, preflight); e != nil {
+	var p stationProfile
+	if e = waitForReady(ctx, "YAM device profile", 32*time.Second, func() (err error) { p, err = detectProfile(api); return }); e != nil {
+		return e
+	}
+	if p.quasarCoexist {
+		wanted, e := quasarWanted()
+		if e != nil {
+			return e
+		}
+		if !wanted && quasarRunning() {
+			if e = stopQuasar(os.Getpid()); e != nil {
+				return e
+			}
+		}
+	}
+	if e = waitForReady(ctx, "AirPlay audio ownership", 32*time.Second, func() error { return preflight(p) }); e != nil {
 		return e
 	}
 	if e = waitForReady(ctx, "YAM clock/RGB API", 32*time.Second, func() error { return verifyYAM(api) }); e != nil {
@@ -668,7 +835,12 @@ func runPlum(ctx context.Context) error {
 		return e
 	}
 	root := filepath.Dir(filepath.Dir(executable))
-	home, conf, e := createConfigs(root)
+	volume := newStationVolume(root)
+	home, conf, e := createConfigs(root, volume != nil)
+	if e != nil {
+		return e
+	}
+	avahiConf, e := avahiConfig(root, home)
 	if e != nil {
 		return e
 	}
@@ -714,7 +886,7 @@ func runPlum(ctx context.Context) error {
 		if _, e := os.Stat("/etc/dbus-1/system.d/avahi-dbus.conf"); e != nil {
 			return errors.New("Avahi D-Bus policy is missing; run the included prepare-host.sh outside YAM")
 		}
-		av, e := startChild(ctx, filepath.Join(root, "bin/avahi-daemon"), []string{"--no-drop-root", "--no-chroot", "-f", filepath.Join(root, "config/avahi-daemon.conf")}, env)
+		av, e := startChild(ctx, filepath.Join(root, "bin/avahi-daemon"), []string{"--no-drop-root", "--no-chroot", "-f", avahiConf}, env)
 		if e != nil {
 			return e
 		}
@@ -733,7 +905,22 @@ func runPlum(ctx context.Context) error {
 		return e
 	}
 	children = append(children, sp)
-	fmt.Println(version, "running (YAM clock+ring; no buttons)")
+	var vis <-chan []byte
+	if hw.pipeOutput {
+		ap, ch, e := playPipe(env)
+		if e != nil {
+			return e
+		}
+		children, vis = append(children, ap), ch
+	}
+	if volume != nil {
+		if e := volume.start(); e != nil {
+			return e
+		}
+		defer volume.stop()
+		fmt.Println("station volume: the sender's slider sets the station volume via the station-volume package")
+	}
+	fmt.Printf("%s running on %s (YAM clock+ring; no buttons)\n", version, hw.name)
 	exits := make(chan exitInfo, len(children))
 	for _, c := range children {
 		go func(c *child) { exits <- exitInfo{c.name, c.cmd.Wait()} }(c)
@@ -744,8 +931,9 @@ func runPlum(ctx context.Context) error {
 	defer tick.Stop()
 	lastUIError := time.Time{}
 	lastClockError := time.Time{}
-	var oldRing [3]string
+	oldRing := ""
 	oldFrameKey := ""
+	released := false
 	lastRingSent, lastClockSent := time.Time{}, time.Time{}
 	lastAudioReport := time.Now()
 	lastAudioCount := uint64(0)
@@ -764,7 +952,28 @@ func runPlum(ctx context.Context) error {
 			}); e != nil {
 				return fmt.Errorf("metadata FIFO: %w", e)
 			}
-			if e := readFD(audioFD, func(buf []byte) { state.audio(buf, now) }); e != nil {
+			if volume != nil {
+				if state.senderVolume {
+					volume.set(state.volume)
+					state.senderVolume = false
+				}
+				volume.poll(func(percent int) {
+					if state.inSession(now) { // idle: Alice shows her own volume
+						state.showVolume(percent, now)
+					}
+				})
+			}
+			if vis != nil {
+			drain:
+				for {
+					select {
+					case b := <-vis:
+						state.audio(b, now)
+					default:
+						break drain
+					}
+				}
+			} else if e := readFD(audioFD, func(buf []byte) { state.audio(buf, now) }); e != nil {
 				return fmt.Errorf("audio FIFO: %w", e)
 			}
 			state.rotate()
@@ -775,12 +984,25 @@ func runPlum(ctx context.Context) error {
 				lastAudioCount = state.pcmFrames
 				lastAudioReport = now
 			}
+			// With Alice running, the ring and clock are hers outside AirPlay
+			// sessions: release them once (YAM restores platformd's triggers
+			// and last clock frame) instead of repainting black and the time.
+			if hw.quasarCoexist && !state.inSession(now) {
+				if !released {
+					logAPIError("ring", api.ledOff(), &lastUIError)
+					logAPIError("clock", api.clockOff(), &lastClockError)
+					released, oldRing, oldFrameKey = true, "", ""
+				}
+				continue
+			}
+			released = false
 			colors := state.ringFrame(now)
-			if colors != oldRing || now.Sub(lastRingSent) > 3*time.Second {
+			ringKey := strings.Join(colors, ",")
+			if ringKey != oldRing || now.Sub(lastRingSent) > 3*time.Second {
 				e := api.leds(colors)
 				logAPIError("ring", e, &lastUIError)
 				if e == nil {
-					oldRing = colors
+					oldRing = ringKey
 					lastRingSent = now
 				}
 			}
