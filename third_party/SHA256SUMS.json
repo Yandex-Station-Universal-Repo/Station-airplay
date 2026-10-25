@@ -1,0 +1,16 @@
+{
+  "receivers/aarch64/shairport-sync": "150117e4ab9231ee3f048204082b803926e28518da909a8d1bbe29f23950ca63",
+  "receivers/armhf/shairport-sync": "b44c366effd0400615f2406530902bb0733341a78b7fd047771ad2fda66444a7",
+  "runtime/aarch64/bin/avahi-daemon": "7e2694c0458ae9f6bbd3f19954bcbaec0e2552e72c673f78dd9faa6807304e35",
+  "runtime/aarch64/lib/ld-linux-aarch64.so.1": "1b882eddacd494b060413a8aa4f0a4754ee3f84775e68cecbf8a86092b59cca6",
+  "runtime/aarch64/lib/libavahi-common.so.3": "be3403fa46d9272836a7b874032ceec08a538d2ece9d3a1a6b59ec450018294e",
+  "runtime/aarch64/lib/libavahi-core.so.7": "071dd22ab0216ae25e05e819dfb5f41499c413ac747758717ff2df9a4a543aba",
+  "runtime/aarch64/lib/libc.so.6": "70fa4c4cf57eabeb96097cce47582d02379c4cd1de3db3e98ade4dd7089a1b13",
+  "runtime/aarch64/lib/libcap.so.2": "2d74e5a4d536311c2e84d1603edb4c8dd7cdfaa92f1305ec4e317edcd062ddec",
+  "runtime/aarch64/lib/libdaemon.so.0": "f8ec672b0a6b2e8d677f1294e60d5930a5add6aedb52c9cd6b0e6475da01288d",
+  "runtime/aarch64/lib/libdbus-1.so.3": "33dc83ad1eb603068542245eab12d67bca6c6f8323c08fe4600ef3b0868966af",
+  "runtime/aarch64/lib/libexpat.so.1": "fce86854472200d93318ae3fa39333025381e769cd1980810f804e49529fed48",
+  "runtime/aarch64/lib/libm.so.6": "a8afb2d1f4a0c5e14c0fc82f794ec839eafe29738907aa92895410f57630bbe2",
+  "runtime/aarch64/lib/libsystemd.so.0": "e3ecd5cf99aa5a9aa88422ab21bde152e998be07b38ebed7ac20cc7d2dd6fe8f",
+  "third_party/shairport-sync-4.3.7.tar.gz": "a1242d100b61fe1fffbbf706e919ed51d6a341c9fb8293fb42046e32ae2b3338"
+}

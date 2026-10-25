@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Единый YAM-плагин: точные профили Station 2 и Mini 3 Pro с проверенным AirPlay1, прямым shared ALSA и сохранением Алисы.
+- AArch64 supervisor, ARMhf/AArch64 receivers; Plum AirPlay2 сохранён отдельно.
+- Приватные D-Bus/Avahi namespace, штатный serial mDNS hostname без конфликта адресов, ограниченные RAM-логи.
+- Обратимая миграция старого standalone автозапуска и общий Python packager.
+- CONTRIBUTE.md для владельцев/ИИ-агентов; исходники, лицензии и provenance новых зависимостей.
+
 ## 1.1.5
 
 - Ускорено целевое обновление визуализатора до 20 FPS (50 мс).

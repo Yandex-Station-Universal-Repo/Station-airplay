@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.1.5"
+	version      = "Station airplay 1.2.0"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -646,7 +646,7 @@ func waitForReady(ctx context.Context, name string, timeout time.Duration, check
 		}
 	}
 }
-func run(ctx context.Context) error {
+func runPlum(ctx context.Context) error {
 	api, e := newYAMAPI()
 	if e != nil {
 		return e
@@ -809,6 +809,9 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	// yamd 0.1.x does not set a parent-death signal on binary plugins. Retire
+	// this service if its owning daemon disappears, before a replacement starts.
+	go watchParent(ctx, cancel, os.Getppid(), os.Getppid)
 	if e := run(ctx); e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)
 		os.Exit(1)
