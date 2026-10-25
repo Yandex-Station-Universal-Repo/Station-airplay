@@ -1,11 +1,14 @@
 --- a/shairport.c
 +++ b/shairport.c
-@@ -593,7 +593,7 @@
-                                              // seconds then we can add an offset of 5.17 seconds and still leave a second's worth of buffers
-                                              // for unexpected circumstances
- 
--  config.model = strdup("ShairportSync");
-+  config.model = strdup("AudioAccessory1,1");
-   // config.model = strdup("AirPort10,115");
-   //  config.model = strdup("AudioAccessory5,1");
- 
+@@ -700,6 +700,11 @@
+       /* Get the Service Name. */
+       if (config_lookup_non_empty_string(config.cfg, "general.name", &str)) {
+         raw_service_name = (char *)str;
++      }
++      /* Presentation model is shared by Bonjour and the /info response. */
++      if (config_lookup_non_empty_string(config.cfg, "general.model", &str)) {
++        free(config.model);
++        config.model = strdup(str);
+       }
+ #ifdef CONFIG_LIBDAEMON
+       /* Get the Daemonize setting. */

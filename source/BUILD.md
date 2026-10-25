@@ -50,7 +50,10 @@ The launcher selects the supervisor architecture; the supervisor selects the
 receiver ABI from the exact YAM model. Station 2 has an AArch64 kernel with an
 ARMhf stock audio userspace; Mini 3 Pro uses an AArch64 receiver. Their receiver
 source is included in `third_party/shairport-sync-4.3.7.tar.gz`; the only source
-patch changes the advertised `am=ShairportSync` to `am=AudioAccessory1,1`.
+historical patch changed `am=ShairportSync` to `am=AudioAccessory1,1`.
+Current AirPlay 2 receivers use the configurable `general.model` patch: Station 2
+is `AudioAccessory1,1`, Mini 3 Pro is `AudioAccessory5,1`. The original Plum
+receiver already advertises `AudioAccessory5,1` and is retained unchanged.
 `scripts/build-receivers.sh` documents cross-build flags and accepts separate
 matching development sysroots. Use stock-library symlinks in those sysroots
 and readelf to verify the final ABI/GLIBC/OpenSSL requirements before deployment.

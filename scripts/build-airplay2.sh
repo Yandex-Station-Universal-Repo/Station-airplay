@@ -57,7 +57,7 @@ fi
 if [ ! -d "$w/shairport-sync-5.6.2" ]; then tar -xf "$P/shairport-sync-5.6.2.tar.gz" -C "$w"; fi
 (
  cd "$w/shairport-sync-5.6.2"
- if grep -q 'config.model = strdup("ShairportSync")' shairport.c; then patch -p1 < "$ROOT/support/homepod-model.patch"; fi
+ if ! grep -q '"general.model"' shairport.c; then patch -p1 < "$ROOT/support/homepod-model.patch"; fi
  autoreconf -fi > "$P/$abi/autoreconf.log" 2>&1
  ./configure --host="$triplet" --with-os=linux --with-alsa --with-avahi --with-ssl=openssl --with-airplay-2 \
   --without-soxr --without-dbus-interface --without-mpris-interface --without-systemd-startup --sysconfdir=/etc \

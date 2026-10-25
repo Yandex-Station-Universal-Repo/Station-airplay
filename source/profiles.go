@@ -18,7 +18,7 @@ import (
 // A model profile is an audio/ABI contract, not a marketing name or kernel arch.
 // AirPlay 2 receivers retain each model's proven shared ALSA device.
 type modelProfile struct {
-	Model, Name, PCM, ReceiverABI string
+	Model, Name, PCM, ReceiverABI, AirPlayModel string
 }
 
 func watchParent(ctx context.Context, cancel context.CancelFunc, parent int, current func() int) {
@@ -75,9 +75,9 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 func profileFor(d yamDevice) (modelProfile, error) {
 	switch d.Model {
 	case "yandexstation_2":
-		return modelProfile{d.Model, "Yandex Station 2 AirPlay", "plug:dmix_spk", "armhf"}, nil
+		return modelProfile{d.Model, "Yandex Station 2 AirPlay", "plug:dmix_spk", "armhf", "AudioAccessory1,1"}, nil
 	case "yandexmini_3_pro":
-		return modelProfile{d.Model, "Yandex Mini 3 Pro AirPlay", "speakers", "aarch64"}, nil
+		return modelProfile{d.Model, "Yandex Mini 3 Pro AirPlay", "speakers", "aarch64", "AudioAccessory5,1"}, nil
 	default:
 		return modelProfile{}, fmt.Errorf("no shared-audio profile for YAM model %q", d.Model)
 	}
@@ -113,6 +113,7 @@ func run(ctx context.Context) error {
 func receiverConfig(p modelProfile) string {
 	return fmt.Sprintf(`general = {
  name = %q;
+ model = %q;
  output_backend = "alsa";
  mdns_backend = "avahi";
  port = 5000;
@@ -130,7 +131,7 @@ alsa = {
  disable_standby_mode = "never";
 };
 metadata = { enabled = "no"; };
-`, p.Name, p.PCM)
+`, p.Name, p.AirPlayModel, p.PCM)
 }
 
 func audioEnv(environ []string, bus string) []string {

@@ -92,3 +92,5 @@ Cold discovery, reconnection, volume, Alice and synchronisation require hardware
 checks after the final package. Build success or RTSP 200 alone proves neither
 sound nor synchronisation. Lossless and surround input are upstream capabilities;
 do not report them as separately hardware-tested without sending those formats.
+
+Presentation models are selected per profile through `general.model`: Station 2 uses `AudioAccessory1,1` (HomePod), Mini 3 Pro uses `AudioAccessory5,1` (HomePod mini). Bonjour and `/info` use the same model; protocol capability bits remain unchanged.

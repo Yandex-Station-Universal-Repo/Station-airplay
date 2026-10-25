@@ -44,9 +44,9 @@ func TestReceiverLogsStayBounded(t *testing.T) {
 }
 
 func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
-	for _, tc := range []struct{ model, pcm, abi string }{
-		{"yandexstation_2", "plug:dmix_spk", "armhf"},
-		{"yandexmini_3_pro", "speakers", "aarch64"},
+	for _, tc := range []struct{ model, pcm, abi, icon string }{
+		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
+		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			p, err := profileFor(yamDevice{Model: tc.model, Architecture: "aarch64"})
@@ -57,7 +57,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 				t.Fatalf("wrong ABI/audio contract: %+v", p)
 			}
 			conf := receiverConfig(p)
-			for _, s := range []string{tc.pcm, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
+			for _, s := range []string{tc.pcm, tc.icon, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
 				if !strings.Contains(conf, s) {
 					t.Fatalf("lost known-working setting %q", s)
 				}
