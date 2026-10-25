@@ -1,0 +1,10 @@
+*.sh text eol=lf
+*.go text eol=lf
+*.py text eol=lf
+*.c text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.patch text eol=lf
+*.patch whitespace=-blank-at-eol,-blank-at-eof
+third_party/licenses/* -text -whitespace
+.gitattributes text eol=lf

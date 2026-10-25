@@ -1,0 +1,37 @@
+--- a/shairport.c
++++ b/shairport.c
+@@ -1913,6 +1913,10 @@
+   else
+     memcpy(result, config.ap1_prefix, sizeof(result));
+ 
++#ifdef CONFIG_MBEDTLS
++  if (mbedtls_md5((unsigned char *)config.ap1_prefix, sizeof(config.ap1_prefix), result))
++    die("cannot derive AirPlay identity");
++#else
+   // OpenSSL is mandatory for AirPlay 2
+   EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+   EVP_DigestInit_ex(mdctx, EVP_md5(), NULL);
+@@ -1920,6 +1924,7 @@
+   unsigned int md5_digest_len = EVP_MD_size(EVP_md5());
+   EVP_DigestFinal_ex(mdctx, result, &md5_digest_len);
+   EVP_MD_CTX_free(mdctx);
++#endif
+ 
+   // now, convert it into a type 4 UUID
+   // see https://stackoverflow.com/questions/10867405/generating-v5-uuid-what-is-name-and-namespace
+--- a/configure.ac
++++ b/configure.ac
+@@ -182,13 +182,9 @@
+ 	fi
+ elif test "x${with_ssl}" = xmbedtls ; then
+ 	AC_DEFINE([CONFIG_MBEDTLS], 1, [Use the mbed TLS libraries for encryption and encoding and decoding])
+-	AC_CHECK_LIB([mbedtls],[mbedtls_ssl_init],,
+-		[AC_MSG_ERROR([mbed tls support requires the mbedtls library -- libmbedtls-dev suggested],1)])
+ 	# Mbed TLS 4 provides the crypto in libtfpsacrypto (TF-PSA-Crypto)
+ 	AC_SEARCH_LIBS([mbedtls_md_setup], [tfpsacrypto mbedcrypto],,
+ 	            [AC_MSG_ERROR([mbed tls support requires the mbedcrypto library (tfpsacrypto with Mbed TLS 4) -- libmbedcrypto0 suggested],1)])
+-	AC_CHECK_LIB([mbedx509], [mbedtls_pk_init],,
+-	            [AC_MSG_ERROR([mbed tls support requires the mbedx509 library -- libmbedx509-0 suggested],1)])
+ elif test "x${with_ssl}" = xpolarssl ; then
+ 	AC_DEFINE([CONFIG_POLARSSL], 1, [Use the PolarSSL libraries for encryption and encoding and decoding])
+ 	AC_CHECK_LIB([polarssl],[ssl_init], , AC_MSG_ERROR(PolarSSL is selected but the library libpolarssl-dev does not seem to be installed and is deprecated. Consider selecting mbedtls instead using --with-ssl=mbedtls.))

@@ -1,0 +1,14 @@
+--- a/shairport.c
++++ b/shairport.c
+@@ -700,6 +700,11 @@
+       /* Get the Service Name. */
+       if (config_lookup_non_empty_string(config.cfg, "general.name", &str)) {
+         raw_service_name = (char *)str;
++      }
++      /* Presentation model is shared by Bonjour and the /info response. */
++      if (config_lookup_non_empty_string(config.cfg, "general.model", &str)) {
++        free(config.model);
++        config.model = strdup(str);
+       }
+ #ifdef CONFIG_LIBDAEMON
+       /* Get the Daemonize setting. */

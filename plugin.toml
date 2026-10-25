@@ -1,16 +1,15 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "1.2.0"
+version = "1.4.0"
 entry = "bin/station-airplay"
-description = "AirPlay 2 receiver for Yandex Station Light 2 and Midi, screen and RGB ring via YAM. No buttons."
+description = "AirPlay 2 receiver: Light 2, Midi, Station 2 and Mini 3 Pro; shared audio with Alice on Station 2/Mini 3 Pro."
 permissions = ["exec", "clock", "led"]
 
 [launch]
 kind = "binary"
 mode = "service"
 path = "bin/station-airplay"
-library_paths = ["lib"]
 
 [compatibility]
-models = ["yandexplum", "plum", "yandexmidi"]
-features = ["display.clock.segment.v1", "led.ring.rgb"]
+models = ["yandexplum", "plum", "yandexstation_2", "yandexmini_3_pro", "yandexmidi"]
+features = []

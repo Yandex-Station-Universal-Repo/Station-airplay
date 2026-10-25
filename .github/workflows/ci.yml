@@ -50,6 +50,24 @@ jobs:
 
       - name: Build Station AirPlay ARMv7 binary
         working-directory: source
+        run: GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/station-airplay .
+      - name: AArch64 build
+        working-directory: source
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/station-airplay-aarch64 .
+      - name: Host migration tests
+        run: |
+          python3 tests/test_host_migration.py
+          python3 -m unittest discover -s tests -p 'test_shared_migration.py' -v
+      - name: Namespace helper syntax
+        run: gcc -fsyntax-only -Wall -Wextra -Werror support/avahi-namespace.c
+      - name: Package
+        run: |
+          python3 scripts/package.py
+          python3 tests/test_package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: station-airplay-yap
+          path: dist/*.yap
         env:
           GOOS: linux
           GOARCH: arm

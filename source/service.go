@@ -1,5 +1,5 @@
 // Plum AirPlay for YAM. Copyright (c) 2026, GPL-3.0-or-later.
-// Audio/metadata originate from the verified Shairport Sync 4.3.7 Plum build.
+// Audio/metadata use upstream Shairport Sync; original Plum/Midi UI is retained.
 // All LED/clock rendering goes through YAM's token-authenticated runtime API.
 // This executable never opens /dev/input or /sys/class/leds.
 package main
@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.2.0"
+	version      = "Station airplay 1.4.0"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -117,9 +117,10 @@ func feature(d yamDevice, name string) bool {
 // stationProfile is the per-model hardware layout. YAM reports the model and
 // features; everything else the renderer and audio setup need lives here.
 type stationProfile struct {
-	name   string
-	models []string
-	leds   int
+	pcm, receiverABI, airplayModel string
+	name                           string
+	models                         []string
+	leds                           int
 	// First clock digit index: Plum numbers digits 0..3, Midi 1..4.
 	digitBase int
 	colon     []string
@@ -137,9 +138,12 @@ type stationProfile struct {
 }
 
 var (
-	plumProfile = stationProfile{name: "plum", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}}
-	midiProfile = stationProfile{name: "midi", models: []string{"yandexmidi"}, leds: 24, digitBase: 1, quasarCoexist: true, mdnsHostPrefix: "yandex-station-midi", pipeOutput: true}
-	profiles    = []stationProfile{plumProfile, midiProfile}
+	plumProfile = stationProfile{name: "plum", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}, airplayModel: "AudioAccessory5,1"}
+	midiProfile = stationProfile{name: "midi", models: []string{"yandexmidi"}, leds: 24, digitBase: 1, quasarCoexist: true, mdnsHostPrefix: "yandex-station-midi", pipeOutput: true, airplayModel: "AudioAccessory1,1"}
+	profiles    = []stationProfile{plumProfile, midiProfile,
+		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
+		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
+	}
 	// hw is the detected profile; verifyYAM sets it before anything renders.
 	hw = plumProfile
 )
@@ -236,6 +240,7 @@ pcm.spk_tee {
 	conf := fmt.Sprintf(`general = {
  output_backend = "alsa";
  name = "%s";
+ model = "%s";
  %s
  mdns_backend = "avahi";
  ignore_volume_control = "%s";
@@ -247,7 +252,7 @@ pcm.spk_tee {
 sessioncontrol = { allow_session_interruption = "yes"; };
 diagnostics = { log_verbosity = 0; };
 metadata = { enabled = "yes"; include_cover_art = "no"; pipe_name = "%s"; };
-`, name, output, ignoreVolume, mac, backend, metadataFIFO)
+`, name, hw.airplayModel, output, ignoreVolume, mac, backend, metadataFIFO)
 	if e = os.WriteFile(filepath.Join(st, ".asoundrc"), []byte(alsa), 0600); e != nil {
 		return "", "", e
 	}
@@ -263,23 +268,20 @@ metadata = { enabled = "yes"; include_cover_art = "no"; pipe_name = "%s"; };
 // as <prefix>-<serial>.local; a second responder with its own host name or
 // address records keeps renaming forever. So avahi takes the same host name
 // and only adds the AirPlay services.
-func avahiConfig(root, st string) (string, error) {
-	if hw.mdnsHostPrefix == "" || !quasarRunning() {
+func avahiConfig(root, st string, p stationProfile) (string, error) {
+	if p.mdnsHostPrefix == "" || (p.pcm == "" && !quasarRunning()) {
 		return filepath.Join(root, "config/avahi-daemon.conf"), nil
 	}
-	serial := ""
-	if b, e := os.ReadFile("/proc/cmdline"); e == nil {
-		for _, f := range strings.Fields(string(b)) {
-			if v, ok := strings.CutPrefix(f, "androidboot.serialno="); ok {
-				serial = v
-			}
-		}
+	b, e := os.ReadFile("/proc/cmdline")
+	if e != nil {
+		return "", e
 	}
-	if serial == "" {
-		return "", errors.New("cannot read the device serial for the mDNS host name")
+	host, e := stockHostname(p.mdnsHostPrefix, string(b))
+	if e != nil {
+		return "", e
 	}
 	conf := fmt.Sprintf(`[server]
-host-name=%s-%s
+host-name=%s
 use-ipv4=yes
 use-ipv6=no
 allow-interfaces=wlan0
@@ -292,9 +294,9 @@ publish-hinfo=no
 publish-workstation=no
 publish-addresses=no
 [rlimits]
-`, hw.mdnsHostPrefix, serial)
-	p := filepath.Join(st, "avahi-daemon.conf")
-	return p, os.WriteFile(p, []byte(conf), 0600)
+`, host)
+	path := filepath.Join(st, "avahi-daemon.conf")
+	return path, os.WriteFile(path, []byte(conf), 0600)
 }
 func ensureFIFO(path string) (int, error) {
 	fi, e := os.Lstat(path)
@@ -325,16 +327,17 @@ func processExists(program string) bool {
 		if e != nil || len(cmd) == 0 {
 			continue
 		}
-		parts := bytes.SplitN(cmd, []byte{0}, 2)
-		first := filepath.Base(string(parts[0]))
-		if first == program {
-			return true
+		// Private libc loaders keep their own argv[0] in /proc/cmdline.
+		for _, part := range bytes.Split(cmd, []byte{0}) {
+			if filepath.Base(string(part)) == program {
+				return true
+			}
 		}
 	}
 	return false
 }
 func preflight(p stationProfile) error {
-	for _, program := range []string{"shairport-sync-ap2", "shairport-sync", "airplayd", "nqptp"} {
+	for _, program := range []string{"shairport-sync-ap2", "shairport-sync-ap2-aarch64", "shairport-sync", "airplayd", "nqptp"} {
 		if processExists(program) {
 			return fmt.Errorf("another AirPlay receiver (%s) is still running; stop it first", program)
 		}
@@ -342,9 +345,13 @@ func preflight(p stationProfile) error {
 	if !p.quasarCoexist && quasarRunning() {
 		return errors.New("Quasar/Alice is running and may own ALSA. Stop it using the existing AirPlay-only procedure first")
 	}
-	ln, e := net.Listen("tcp4", ":7000")
+	port := 7000
+	if p.pcm != "" {
+		port = 5000
+	}
+	ln, e := net.Listen("tcp4", fmt.Sprintf(":%d", port))
 	if e != nil {
-		return fmt.Errorf("RTSP port 7000 occupied: %w", e)
+		return fmt.Errorf("RTSP port %d occupied; stop the previous receiver: %w", port, e)
 	}
 	_ = ln.Close()
 	return nil
@@ -359,17 +366,29 @@ type exitInfo struct {
 	err  error
 }
 
-func startChild(ctx context.Context, bin string, args []string, env []string) (*child, error) {
+func startChild(ctx context.Context, bin string, args []string, env []string, output ...io.Writer) (*child, error) {
+	program := filepath.Base(bin)
+	// One ARMhf runtime also serves the existing Light/Midi engine and Avahi.
+	if program == "shairport-sync-ap2" || program == "avahi-daemon" || program == "nqptp" {
+		root := filepath.Dir(filepath.Dir(bin))
+		args = append([]string{"--library-path", filepath.Join(root, "lib"), bin}, args...)
+		bin = filepath.Join(root, "lib/ld-linux-armhf.so.3")
+	}
 	cmd := exec.Command(bin, args...)
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if len(output) != 0 {
+		cmd.Stdout, cmd.Stderr = output[0], output[0]
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start %s: %w", filepath.Base(bin), err)
+		return nil, fmt.Errorf("start %s: %w", program, err)
 	}
-	fmt.Printf("started %s pid=%d\n", filepath.Base(bin), cmd.Process.Pid)
-	return &child{name: filepath.Base(bin), cmd: cmd}, nil
+	if len(output) == 0 {
+		fmt.Printf("started %s pid=%d\n", program, cmd.Process.Pid)
+	}
+	return &child{name: program, cmd: cmd}, nil
 }
 func stopChildren(children []*child) {
 	for i := len(children) - 1; i >= 0; i-- {
@@ -798,7 +817,7 @@ func waitForReady(ctx context.Context, name string, timeout time.Duration, check
 		}
 	}
 }
-func run(ctx context.Context) error {
+func runPlum(ctx context.Context) error {
 	api, e := newYAMAPI()
 	if e != nil {
 		return e
@@ -834,20 +853,13 @@ func run(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	avahiConf, e := avahiConfig(root, home)
+	avahiConf, e := avahiConfig(root, home, p)
 	if e != nil {
 		return e
 	}
 	// Keep the short-lived YAM runtime token confined to this supervisor.
 	// Audio/Avahi child processes never need access to YAM's hardware API.
-	env := []string{}
-	for _, value := range os.Environ() {
-		if strings.HasPrefix(value, "YAM_API_URL=") || strings.HasPrefix(value, "YAM_API_TOKEN=") || strings.HasPrefix(value, "LD_LIBRARY_PATH=") || strings.HasPrefix(value, "HOME=") {
-			continue
-		}
-		env = append(env, value)
-	}
-	env = append(env, "LD_LIBRARY_PATH="+filepath.Join(root, "lib"), "HOME="+home)
+	env := audioEnv(os.Environ(), home, "")
 	lockPath := "/tmp/plum-yam-airplay.lock"
 	lk, e := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
 	if e != nil {
@@ -1025,12 +1037,17 @@ func run(ctx context.Context) error {
 	}
 }
 func main() {
+	// Packaged programs use an explicit loader; keep private libc off stock children.
+	_ = os.Unsetenv("LD_LIBRARY_PATH")
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version)
 		return
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	// yamd 0.1.x does not set a parent-death signal on binary plugins. Retire
+	// this service if its owning daemon disappears, before a replacement starts.
+	go watchParent(ctx, cancel, os.Getppid(), os.Getppid)
 	if e := run(ctx); e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)
 		os.Exit(1)
