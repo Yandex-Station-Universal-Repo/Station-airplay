@@ -22,7 +22,14 @@ for model, yam_model, abi, machine in [
             assert members[name].mode & 0o111
         other = 'aarch64' if abi == 'armhf' else 'armhf'
         assert not any(n.startswith(f'runtime/ap2-{other}/') for n in members)
-        assert 'bin/station-airplay-aarch64' in members
+        assert 'bin/station-airplay' in members
+        assert 'bin/station-airplay-aarch64' not in members
+        assert int.from_bytes(archive.extractfile('bin/station-airplay').read(20)[18:20], 'little') == 40
         assert 'runtime/aarch64/bin/avahi-daemon' in members
-        assert 'support/homepod-model.patch' in members
+        assert not any(n.startswith(('source/', 'docs/', 'support/')) or n.endswith(('.tar.gz', '.tar.xz')) for n in members)
 print('Model package ABI, compatibility, size and executable contracts passed')
+
+subprocess.run([sys.executable, str(root/'scripts/package.py')], check=True)
+with tarfile.open(root/'dist'/f'station-airplay-{version}.yap') as archive:
+    assert sum(m.size for m in archive.getmembers() if m.isfile()) < 26*1024*1024
+    assert not any(m.name == 'bin/station-airplay-aarch64' for m in archive.getmembers())

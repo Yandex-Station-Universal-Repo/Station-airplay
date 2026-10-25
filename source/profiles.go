@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -104,8 +103,8 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if runtime.GOARCH != "arm64" || d.Architecture != "aarch64" {
-		return errors.New("Station 2/Mini 3 Pro profiles require an AArch64 kernel and supervisor")
+	if d.Architecture != "aarch64" {
+		return errors.New("Station 2/Mini 3 Pro profiles require an AArch64 kernel")
 	}
 	return runShared(ctx, p)
 }
@@ -253,13 +252,7 @@ func serveShared(ctx context.Context, p modelProfile) error {
 		if e != nil {
 			return e
 		}
-		found := false
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.HasPrefix(line, "avahi:") {
-				found = true
-			}
-		}
-		if !found {
+		if !strings.Contains("\n"+string(b), "\navahi:") {
 			b = append(b, []byte("\n"+file.addition)...)
 		}
 		if err = os.WriteFile(filepath.Join(state, file.name), b, 0600); err != nil {
@@ -304,30 +297,17 @@ publish-addresses=no
 		if e != nil {
 			return e
 		}
-		cmd := exec.Command(bin, args...)
-		cmd.Env = env
-		output := &boundedLog{f: file}
-		cmd.Stdout = output
-		cmd.Stderr = output
-		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
-		if e = cmd.Start(); e != nil {
+		c, e := startChild(ctx, bin, args, env, &boundedLog{f: file})
+		if e != nil {
 			file.Close()
-			return fmt.Errorf("start %s: %w", name, e)
+			return e
 		}
-		c := &child{name: name, cmd: cmd}
-		fmt.Printf("started %s pid=%d (bounded RAM log: %s)\n", name, cmd.Process.Pid, filepath.Join(state, name+".log"))
+		c.name = name
+		fmt.Printf("started %s pid=%d\n", name, c.cmd.Process.Pid)
 		children = append(children, c)
 		go func() {
 			err := c.cmd.Wait()
 			file.Close()
-			if err != nil {
-				if b, e := os.ReadFile(filepath.Join(state, name+".log")); e == nil {
-					if len(b) > 2048 {
-						b = b[len(b)-2048:]
-					}
-					fmt.Fprintf(os.Stderr, "%s last output: %s\n", name, b)
-				}
-			}
 			exits <- exitInfo{c.name, err}
 		}()
 		return nil
@@ -359,8 +339,10 @@ publish-addresses=no
 		return err
 	}
 	rt := filepath.Join(root, "runtime", "aarch64")
-	if err = launch("avahi-namespace-aarch64", filepath.Join(root, "bin/avahi-namespace-aarch64"), state,
-		filepath.Join(rt, "lib/ld-linux-aarch64.so.1"), "--library-path", filepath.Join(rt, "lib"), filepath.Join(rt, "bin/avahi-daemon"),
+	ld64 := filepath.Join(rt, "lib/ld-linux-aarch64.so.1")
+	libs64 := filepath.Join(rt, "lib")
+	if err = launch("avahi-namespace-aarch64", ld64, "--library-path", libs64, filepath.Join(root, "bin/avahi-namespace-aarch64"), state,
+		ld64, "--library-path", libs64, filepath.Join(rt, "bin/avahi-daemon"),
 		"-f", filepath.Join(state, "avahi.conf"), "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title"); err != nil {
 		return err
 	}
@@ -376,14 +358,14 @@ publish-addresses=no
 		return err
 	}
 	ap2 := filepath.Join(root, "runtime", "ap2-"+p.ReceiverABI)
-	loader := "ld-linux-aarch64.so.1"
+	loader, libs := ld64, libs64
 	if p.ReceiverABI == "armhf" {
-		loader = "ld-linux-armhf.so.3"
+		loader, libs = filepath.Join(ap2, "lib/ld-linux-armhf.so.3"), filepath.Join(ap2, "lib")
 	}
 	launchAP2 := func(name string, args ...string) error {
 		// Only this process uses the private libc; stock ALSA/D-Bus stay on device.
-		argv := []string{"--library-path", filepath.Join(ap2, "lib") + ":/usr/lib:/lib", filepath.Join(ap2, "bin", name)}
-		return launch(name, filepath.Join(ap2, "lib", loader), append(argv, args...)...)
+		argv := []string{"--library-path", libs + ":/usr/lib:/lib", filepath.Join(ap2, "bin", name)}
+		return launch(name, loader, append(argv, args...)...)
 	}
 	if err = launchAP2("nqptp", "-v"); err != nil {
 		return err

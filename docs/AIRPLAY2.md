@@ -1,96 +1,57 @@
-# Station 2 / Mini 3 Pro: AirPlay 2 backend
+# AirPlay 2: Station 2 and Mini 3 Pro
 
-Version 1.3.0 uses Shairport Sync **5.6.2** with NQPTP **1.2.9 / smi11** on
-both shared-audio models. This replaces the 1.2.0 AirPlay 1 compatibility backend.
-The original Plum backend is retained; its hardware was not available for this port.
+Shairport Sync **5.6.2**, NQPTP **1.2.9 / smi11**. The original Plum backend is
+retained. [SHARED_MODELS.md](SHARED_MODELS.md) records firmware, PCM and rollback.
 
-| Model | Receiver ABI | Shared PCM | Output |
-|---|---|---|---|
-| `yandexstation_2` | ARMhf | `plug:dmix_spk` | stereo S16_LE / 48000 |
-| `yandexmini_3_pro` | AArch64 | `speakers` | stereo S16_LE / 48000 |
+## Runtime
 
-Both kernels/supervisors are AArch64. Receiver ABI follows stock ALSA, not the
-kernel. A private loader/libc runs only the receiver and timing service; ALSA
-and D-Bus libraries resolve from the device. No captured device library is shipped.
+One static ARMv7 Go supervisor runs on all supported kernels. Station 2 uses an
+ARMhf receiver, Mini 3 Pro AArch64, following stock ALSA rather than kernel ABI.
+One common AArch64 loader/libc serves Avahi, namespace helper and Mini's receiver;
+Station 2 retains its ARMhf libc/loader. Stock ALSA/OpenSSL are loaded from firmware,
+and a private D-Bus/Avahi instance advertises without modifying system accounts,
+D-Bus or the read-only root. No captured firmware library is redistributed.
 
-The stock dmix runs at 48 kHz. Shairport 5.6 probes ALSA with resampling disabled:
-44100 fails that probe on both models, although the old receiver could play it
-through ALSA conversion. Pinning 44100 causes the new format search to fail.
-Use 48000 and let Shairport transcode 44.1 kHz input. Do not replace dmix or stop Alice.
+Output is shared stereo **48 kHz/S16_LE**, retaining Alice. The new receiver probes
+ALSA with resampling disabled; both mixers reject 44.1 kHz in that probe.
+Upstream supports buffered AAC/ALAC and PTP realtime ALAC, including lossless
+24-bit/48 kHz input; the output profile is still S16_LE. 96/192 kHz/Atmos are not
+claimed. See [upstream capabilities](https://github.com/mikebrady/shairport-sync/blob/5.6.2/AIRPLAY2.md).
 
-## Protocol and presentation
+NQPTP owns UDP319/320 and localhost9000. The supervisor checks occupied ports,
+stops only its four children, retries their unexpected exits and bounds RAM logs.
+The namespace helper dynamically uses the common loader; it never changes global
+passwd/group. The source-only migration helper guards previous standalone installs.
 
-Upstream supports PTP-synchronised realtime ALAC and buffered AAC/ALAC, including
-24-bit/48 kHz lossless input. These shared hardware profiles output S16_LE; input
-support does not imply a 24-bit hardware path. 96/192 kHz lossless and Atmos are
-unsupported upstream. See [upstream AirPlay 2 capabilities](https://github.com/mikebrady/shairport-sync/blob/5.6.2/AIRPLAY2.md).
+## Build / package
 
-`support/homepod-model.patch` changes only the advertised model to
-`AudioAccessory1,1`, consistently in mDNS and `/info`, to retain the HomePod icon.
-This is presentation compatibility; it does not turn the speaker into an Apple
-HomePod or implement Siri/HomePod firmware features. Other protocol flags remain
-the upstream defaults. iOS may retain the previous discovery record briefly after
-an upgrade. Do not add competing mDNS publishers to force an icon refresh.
+Follow [BUILD.md](../source/BUILD.md). `python3 scripts/package.py` creates one
+universal `.yap`/plugin ID. Optional local `--model` filters conserve flash; they
+are not separate YAM registry entries. Runtime + license notices are packaged;
+source/build/docs remain in Git. Keep the previous tested package for rollback.
 
-NQPTP needs exclusive UDP 319/320 and a localhost control port 9000. The supervisor
-checks these before startup and owns all four children: private D-Bus, private
-Avahi, NQPTP and Shairport. Runtime logs stay in bounded RAM files. An occupied
-timing port is an error; another service is never killed automatically.
+1.3.2 removes the duplicate supervisor, obsolete AP1 receivers and duplicate
+AArch64 libc. Receivers use firmware OpenSSL, small FFmpeg and linker section GC.
+Each distinct third-party copyright notice is preserved byte-for-byte once.
+The user's reference ap2-min kit uses older 4.3.7/FFmpeg4; its dependency-pruning
+idea was compared, while this port retains 5.6.2/FFmpeg7 and both tested ABIs.
 
-## Build and install
+## Presentation / checks
 
-Follow [BUILD.md](../source/BUILD.md). Model-specific archives are standard YAM
-packages with the same ID/version/source, narrowed compatibility and only their
-required binary payload. The universal archive includes all profiles but needs
-more staging space. Source archives remain in the repository rather than speaker flash.
+`general.model` consistently controls Bonjour and `/info`: Station2 HomePod,
+Mini3Pro HomePod mini. Light2's original HomePod mini identity is unchanged.
+This adds no Siri/HomePod firmware capability bits. [CONTRIBUTE.md](../CONTRIBUTE.md)
+contains the full icon mapping and extension rules. iOS may cache the old icon.
 
-```sh
-python3 scripts/package.py --model station2
-python3 scripts/package.py --model mini3pro
-# Or the larger universal archive:
-python3 scripts/package.py
-```
+1.3.1 baseline: real iPhone AAC/48k playback on both/simultaneously,331s continuous
+observation without restarts, owner heard no interruptions/desync. 1.3.2: startup,
+stop/run, disable+stop/enable, legacy guard and receiver/NQPTP crash recovery pass
+on both; protected files/boot/Wi-Fi carrier/Alice PIDs remain unchanged. Actual
+playback after the new rebuild requires a fresh owner check.
 
-Install the matching `dist/station-airplay-1.3.0-MODEL.yap` through YAM. Stop and
-disable the previous receiver before installing/enabling. Keep the known-working
-1.2.0 `.yap` for rollback. See [shared-model migration](SHARED_MODELS.md).
-
-## Verification boundaries
-
-The port was tested on the firmware versions recorded in SHARED_MODELS.md.
-Both models completed transient HAP, encrypted control/event channels and PTP
-SETUP. A real iPhone sent buffered AAC/48000/F24/stereo, decoded to the shared
-48000/S16_LE output; the owner confirmed simultaneous playback on both.
-
-The owner also confirmed HomePod icons after the model patch. Stop/run,
-disable+stop/enable, legacy startup guard and recovery from a killed receiver
-or NQPTP passed on both, without changing protected files, boot, Wi-Fi carrier
-count or Alice PIDs. Go tests/vet, both architecture builds and migration tests passed.
-
-Continuous simultaneous iPhone playback subsequently passed a 331-second
-observation on both models: all 12 samples per device showed active stereo
-48000/S16_LE output, with no probe errors, receiver restarts or mDNS hostname
-conflicts. Protected files, boot, Wi-Fi carrier counters and Alice PIDs remained
-unchanged. Recent receiver timing offsets were approximately 1.6–2 ms against
-the common clock; this is software timing telemetry, not a physical acoustic
-phase measurement.
-
-**Release gate still pending:** the owner reported intermittent disappearance
-and delayed connection during final iPhone testing. Sustained playback has
-passed; repeated reconnection, volume and Alice still need final confirmation.
-Packet capture
-showed Mini answering multicast discovery and exchanging IPv6 control traffic;
-its receiver and Wi-Fi carrier count remained unchanged in that observation.
-The cause of the earlier intermittent behaviour is not established. Keep the
-upstream PR closed until repeated discovery/reconnection passes as well.
-
-The pyatv realtime V2 sender requests NTP, which upstream Shairport does not
-implement. Its 501 response is not a valid buffered/PTP playback test. Do not
-silently force a legacy fallback and report that as AirPlay 2 verification.
-
-Cold discovery, reconnection, volume, Alice and synchronisation require hardware
-checks after the final package. Build success or RTSP 200 alone proves neither
-sound nor synchronisation. Lossless and surround input are upstream capabilities;
-do not report them as separately hardware-tested without sending those formats.
-
-Presentation models are selected per profile through `general.model`: Station 2 uses `AudioAccessory1,1` (HomePod), Mini 3 Pro uses `AudioAccessory5,1` (HomePod mini). Bonjour and `/info` use the same model; protocol capability bits remain unchanged.
+Known issue: iPhone reconnection can take20–25s; earlier errors/disappearance are
+unexplained. Captures showed a later Station2 control connection and an event
+response400 from iPhone. Cause is unproven, including any jailbreak/tweak effect.
+PR is open at the owner's request with this limitation disclosed.
+The pyatv realtime NTP/501 path is not a buffered/PTP audio test. Lossless/surround,
+24-bit DAC output, Plum hardware and full reboot are not claimed tested.

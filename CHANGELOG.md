@@ -1,3 +1,9 @@
+## 1.3.2
+
+- One static ARMv7 supervisor for all supported kernels; remove duplicate AArch64 supervisor and obsolete AirPlay 1 receiver payloads.
+- Share AArch64 libc/loader between Avahi and AirPlay; dynamically link namespace helper and stock OpenSSL; small FFmpeg/section-GC builds.
+- Deduplicate copyright notices without changing unique texts. Ship runtime + notices; keep source/build/docs in Git. One universal YAM package/ID remains the default.
+
 ## 1.3.1
 
 - Select HomePod for Station 2 and HomePod mini for Mini 3 Pro; preserve the original Light 2 HomePod mini identity. Keep Bonjour and `/info` consistent through per-profile receiver configuration.

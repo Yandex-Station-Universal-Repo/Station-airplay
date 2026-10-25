@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.3.1"
+	version      = "Station airplay 1.3.2"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -252,16 +252,21 @@ type exitInfo struct {
 	err  error
 }
 
-func startChild(ctx context.Context, bin string, args []string, env []string) (*child, error) {
+func startChild(ctx context.Context, bin string, args []string, env []string, output ...io.Writer) (*child, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if len(output) != 0 {
+		cmd.Stdout, cmd.Stderr = output[0], output[0]
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", filepath.Base(bin), err)
 	}
-	fmt.Printf("started %s pid=%d\n", filepath.Base(bin), cmd.Process.Pid)
+	if len(output) == 0 {
+		fmt.Printf("started %s pid=%d\n", filepath.Base(bin), cmd.Process.Pid)
+	}
 	return &child{name: filepath.Base(bin), cmd: cmd}, nil
 }
 func stopChildren(children []*child) {

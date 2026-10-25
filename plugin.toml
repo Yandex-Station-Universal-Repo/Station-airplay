@@ -1,14 +1,14 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "1.3.1"
-entry = "bin/launch.sh"
+version = "1.3.2"
+entry = "bin/station-airplay"
 description = "AirPlay 2 receiver: Light 2, Station 2 and Mini 3 Pro; shared audio with Alice on Station 2/Mini 3 Pro."
 permissions = ["exec", "clock", "led"]
 
 [launch]
 kind = "binary"
 mode = "service"
-path = "bin/launch.sh"
+path = "bin/station-airplay"
 library_paths = ["lib"]
 
 [compatibility]

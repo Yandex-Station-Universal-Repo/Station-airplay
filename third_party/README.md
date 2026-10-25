@@ -1,54 +1,27 @@
-# AirPlay 2 dependencies added in 1.3.0
+# Third-party components
 
-The complete unmodified upstream source archives for Shairport Sync 5.6.2,
-NQPTP 1.2.9 and FFmpeg 7.1.3 are kept here. The only receiver patch is
-`support/homepod-model.patch`. Build flags, private sysroot preparation and
-runtime assembly are documented in `source/BUILD.md` and
-`scripts/build-airplay2.sh`. These sources and build instructions allow
-rebuilding/relinking the receiver with modified LGPL libraries.
-
-Source origins: https://github.com/mikebrady/shairport-sync/tree/5.6.2,
+Unmodified upstream source archives are kept here for Shairport Sync 5.6.2,
+NQPTP 1.2.9 and FFmpeg 7.1.3. `airplay2-build.json` pins source/package digests;
+`debian-runtime.json` records Avahi runtime packages. Origins:
+https://github.com/mikebrady/shairport-sync/tree/5.6.2,
 https://github.com/mikebrady/nqptp/tree/1.2.9,
 https://ffmpeg.org/releases/ffmpeg-7.1.3.tar.xz.
-`airplay2-build.json` pins source SHA256 and every Debian build package.
-Corresponding Debian source/patches are available at https://sources.debian.org/
-under the recorded Source/version, with historic archives at
-https://snapshot.debian.org/. `licenses/ap2-*` contains package copyright notices.
-Shairport uses GPL-3.0, NQPTP GPL-2.0, the selected FFmpeg configuration LGPL-2.1+;
-the distribution notices enumerate the other static and runtime library terms.
-No proprietary/captured stock library is redistributed. Shipped libc/libm/loader
-and libplist are the recorded Debian packages, isolated per process.
 
-Upstream source archives remain in this repository and are omitted from the
-speaker .yap to conserve flash. Keep the source and patch available alongside
-any binary redistribution. The legacy Plum provenance caveat below still applies.
+The receiver's only source patch is `support/homepod-model.patch`.
+[source/BUILD.md](../source/BUILD.md) and `scripts/build-airplay2.sh` describe
+rebuilding/relinking with modified libraries. Source archives stay in Git, off
+speaker flash. Keep sources, patch and notices available with redistribution.
+Shairport Sync is GPL-3.0, NQPTP GPL-2.0, selected FFmpeg LGPL-2.1+.
 
-## Historical 1.2.0 dependencies
+`licenses/` keeps each distinct package copyright notice byte-for-byte once.
+`licenses/INDEX.json` maps original package/architecture notice names to those
+canonical copies; no unique notice text is removed. Exact Debian archive URLs
+are `https://deb.debian.org/debian/` + `Filename` in the manifests; corresponding
+source/patches are at https://sources.debian.org/ and https://snapshot.debian.org/.
+Matching firmware ALSA/D-Bus/OpenSSL files are link inputs only, not distributed.
+One common AArch64 libc/loader serves Avahi and receiver; ARMhf has its own.
+`SHA256SUMS.json` records the current added runtime/source files.
 
-# Added shared-audio dependencies
-
-The new Station 2/Mini 3 Pro profiles retain the previously hardware-tested
-Shairport Sync 4.3.7 AirPlay 1 binaries. These are not builds of an AirPlay 2
-receiver. Corresponding upstream source is supplied as
-`shairport-sync-4.3.7.tar.gz` (https://github.com/mikebrady/shairport-sync/releases/tag/4.3.7),
-with the only applied source modification and build flags documented in
-`source/BUILD.md` and `scripts/build-receivers.sh`. GPL-3.0 applies to the receiver.
-Stock audio/OpenSSL/libc libraries are resolved on each target; they are not
-redistributed from the devices. ARMhf expects the Station 2 OpenSSL 1.1 ABI;
-AArch64 expects the Mini 3 Pro OpenSSL 3 ABI. Do not assume these binaries work
-on other firmware versions.
-
-The isolated AArch64 Avahi runtime was extracted from the verified Debian
-packages in `debian-runtime.json`. Source package names/versions are in its
-`Source` field (otherwise same as `Package`/`Version`). Exact archive URLs are
-`https://deb.debian.org/debian/` plus `Filename`; historical versions can be
-retrieved from https://snapshot.debian.org/. Corresponding source and Debian
-patches are available through https://sources.debian.org/ at the recorded source
-versions. `licenses/` contains the distribution copyright notices. Avahi is
-unmodified; the namespace helper is this project's own source in `support/`.
-
-SHA256SUMS.json records each added runtime/receiver/source file, independently of
-package release digests. Retain corresponding source, notices and rebuild
-instructions when redistributing modified binaries. This metadata covers only
-the new profiles; it does not resolve the original Plum binary provenance caveat
-in docs/THIRD_PARTY.md.
+The original Plum binaries/libraries are retained. The 4.3.7 source archive is
+retained for reference; exact Plum rebuild provenance remains subject to the
+existing caveat in [THIRD_PARTY.md](../docs/THIRD_PARTY.md).

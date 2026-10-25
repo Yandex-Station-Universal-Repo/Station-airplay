@@ -1,65 +1,11 @@
 [
-  {
-    "Package": "avahi-daemon",
-    "Version": "0.8-16",
-    "Source": "avahi",
-    "Filename": "pool/main/a/avahi/avahi-daemon_0.8-16_arm64.deb",
-    "SHA256": "c88a5d29eefafecdfe52f1357898e0f44e9c0b0a88b62df8311fe3c836b836cd"
-  },
-  {
-    "Package": "libavahi-common3",
-    "Version": "0.8-16",
-    "Source": "avahi",
-    "Filename": "pool/main/a/avahi/libavahi-common3_0.8-16_arm64.deb",
-    "SHA256": "495d3502dbaed9e71c54cd0030fd135d62140b7c780620cc14a0a8a615adda14"
-  },
-  {
-    "Package": "libavahi-core7",
-    "Version": "0.8-16",
-    "Source": "avahi",
-    "Filename": "pool/main/a/avahi/libavahi-core7_0.8-16_arm64.deb",
-    "SHA256": "1d60d72c3c4c3a59d86c9b681dbbb71f1ea80c1ea754327a41c96a7288a01f5d"
-  },
-  {
-    "Package": "libdbus-1-3",
-    "Version": "1.16.2-2",
-    "Source": "dbus",
-    "Filename": "pool/main/d/dbus/libdbus-1-3_1.16.2-2_arm64.deb",
-    "SHA256": "ca6bb5f2047ad58d274cb7d14216035a07d8e5aae6f6a0122c4f6293c9c39515"
-  },
-  {
-    "Package": "libexpat1",
-    "Version": "2.8.3-1~deb13u1",
-    "Source": "expat",
-    "Filename": "pool/main/e/expat/libexpat1_2.8.3-1~deb13u1_arm64.deb",
-    "SHA256": "c3248c4beb721c8290e6e34527ae56b1fc965aa6a14982ca602df4458ef0854e"
-  },
-  {
-    "Package": "libc6",
-    "Version": "2.41-12+deb13u4",
-    "Source": "glibc",
-    "Filename": "pool/main/g/glibc/libc6_2.41-12+deb13u4_arm64.deb",
-    "SHA256": "8784eda966b189c777a384dac5ce009e8fc9b52d006926c5a013e7fa8aa688cc"
-  },
-  {
-    "Package": "libcap2",
-    "Version": "1:2.75-10+deb13u1+b3",
-    "Source": "libcap2 (1:2.75-10+deb13u1)",
-    "Filename": "pool/main/libc/libcap2/libcap2_2.75-10+deb13u1+b3_arm64.deb",
-    "SHA256": "863aa5b9cdf6f80010b48982d4639126b09a89eeef2c0c5c7be226297c811581"
-  },
-  {
-    "Package": "libdaemon0",
-    "Version": "0.14-7.1+b3",
-    "Source": "libdaemon (0.14-7.1)",
-    "Filename": "pool/main/libd/libdaemon/libdaemon0_0.14-7.1+b3_arm64.deb",
-    "SHA256": "a685244841cd0840b269da6eeac476410c454b74f1c265823073d27c91a4cefb"
-  },
-  {
-    "Package": "libsystemd0",
-    "Version": "257.13-1~deb13u1",
-    "Source": "systemd",
-    "Filename": "pool/main/s/systemd/libsystemd0_257.13-1~deb13u1_arm64.deb",
-    "SHA256": "d2f63c408549c29eaefb6f4c948393edce99f45ee8e43c991391bef63fb7d54b"
-  }
+  {"Package": "avahi-daemon", "Version": "0.8-16", "Source": "avahi", "Filename": "pool/main/a/avahi/avahi-daemon_0.8-16_arm64.deb", "SHA256": "c88a5d29eefafecdfe52f1357898e0f44e9c0b0a88b62df8311fe3c836b836cd"},
+  {"Package": "libavahi-common3", "Version": "0.8-16", "Source": "avahi", "Filename": "pool/main/a/avahi/libavahi-common3_0.8-16_arm64.deb", "SHA256": "495d3502dbaed9e71c54cd0030fd135d62140b7c780620cc14a0a8a615adda14"},
+  {"Package": "libavahi-core7", "Version": "0.8-16", "Source": "avahi", "Filename": "pool/main/a/avahi/libavahi-core7_0.8-16_arm64.deb", "SHA256": "1d60d72c3c4c3a59d86c9b681dbbb71f1ea80c1ea754327a41c96a7288a01f5d"},
+  {"Package": "libdbus-1-3", "Version": "1.16.2-2", "Source": "dbus", "Filename": "pool/main/d/dbus/libdbus-1-3_1.16.2-2_arm64.deb", "SHA256": "ca6bb5f2047ad58d274cb7d14216035a07d8e5aae6f6a0122c4f6293c9c39515"},
+  {"Package": "libexpat1", "Version": "2.8.3-1~deb13u1", "Source": "expat", "Filename": "pool/main/e/expat/libexpat1_2.8.3-1~deb13u1_arm64.deb", "SHA256": "c3248c4beb721c8290e6e34527ae56b1fc965aa6a14982ca602df4458ef0854e"},
+  {"Package": "libc6", "Version": "2.41-12+deb13u4", "Source": "glibc", "Filename": "pool/main/g/glibc/libc6_2.41-12+deb13u4_arm64.deb", "SHA256": "8784eda966b189c777a384dac5ce009e8fc9b52d006926c5a013e7fa8aa688cc"},
+  {"Package": "libcap2", "Version": "1:2.75-10+deb13u1+b3", "Source": "libcap2 (1:2.75-10+deb13u1)", "Filename": "pool/main/libc/libcap2/libcap2_2.75-10+deb13u1+b3_arm64.deb", "SHA256": "863aa5b9cdf6f80010b48982d4639126b09a89eeef2c0c5c7be226297c811581"},
+  {"Package": "libdaemon0", "Version": "0.14-7.1+b3", "Source": "libdaemon (0.14-7.1)", "Filename": "pool/main/libd/libdaemon/libdaemon0_0.14-7.1+b3_arm64.deb", "SHA256": "a685244841cd0840b269da6eeac476410c454b74f1c265823073d27c91a4cefb"},
+  {"Package": "libsystemd0", "Version": "257.13-1~deb13u1", "Source": "systemd", "Filename": "pool/main/s/systemd/libsystemd0_257.13-1~deb13u1_arm64.deb", "SHA256": "d2f63c408549c29eaefb6f4c948393edce99f45ee8e43c991391bef63fb7d54b"}
 ]

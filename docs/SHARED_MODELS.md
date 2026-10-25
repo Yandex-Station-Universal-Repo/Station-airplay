@@ -1,117 +1,42 @@
-# Station 2 и Mini 3 Pro через общий YAM-плагин
+# Shared audio profiles
 
-Версия 1.3.0 переводит оба профиля в существующем `station-airplay` на
-**AirPlay 2**. Сборка, частота 48 кГц, протокол и границы проверки: [AIRPLAY2.md](AIRPLAY2.md).
-RGB/сегментный renderer Plum не переносится на другие модели догадками.
-
-| YAM model | Проверенная прошивка | Receiver ABI / системные библиотеки | PCM |
+| YAM model | Receiver ABI / stock OpenSSL | Shared PCM | Icon |
 |---|---|---|---|
-| `yandexstation_2` | `0.369.1.50.4794649087.20261021.295` | ARMhf, private libc + static crypto | `plug:dmix_spk`, 48 kHz S16_LE |
-| `yandexmini_3_pro` | `0.369.1.50.4795647264.20261021.107` | AArch64, private libc + static crypto | `speakers`, 48 kHz S16_LE |
+| `yandexstation_2` | ARMhf / 1.1 | `plug:dmix_spk` | HomePod |
+| `yandexmini_3_pro` | AArch64 / 3 | `speakers` | HomePod mini |
 
-Обе используют статический AArch64 Go supervisor, YAM 0.1.13 и штатные
-`/usr/bin/dbus-daemon`, `/usr/bin/dbus-send`. Не делайте вывод о совместимости с
-другими прошивками только по совпадению model ID: сначала проверьте ELF и PCM.
+Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
+`0.369.1.50.4795647264.20261021.107`; YAM 0.1.13. Both kernels execute the single
+static ARMv7 supervisor. Audio uses 48 kHz/S16 stereo and retains Alice.
+Both mixers reject 44.1 kHz when resampling is disabled in the new receiver.
+Clock/RGB remain with the original Plum backend; these profiles do not touch them.
 
-## Установка и миграция
+## Install / rollback
 
-Соберите общий архив по [BUILD.md](../source/BUILD.md). Если прежнего AirPlay нет,
-установите архив и включите пакет средствами YAM. При уже установленном
-standalone-приёмнике сначала отключите именно его автозапуск.
+Build per [BUILD.md](../source/BUILD.md), install the universal `.yap` through YAM,
+then enable `station-airplay`. With closed WAN, transfer the package from the PC.
+Do not change network/OTA policy or system ALSA/D-Bus/accounts.
 
-Для известных прежних установок `/data/local/airplay-station2` и
-`/data/local/airplay-mini3pro` включён обратимый helper. Перед запуском прочитайте
-его исходник и сохраните свои настройки; скрипт запускается **на колонке**:
+Stop any previous receiver and its autostart first. For the previously tested
+`/data/local/airplay-station2` and `/data/local/airplay-mini3pro` layouts, the
+repository contains `support/migrate-shared.sh apply MODEL` / `rollback MODEL`;
+read it before applying. It preserves backups and guards the old launcher.
+YAM stop and disable are separate operations: disable+stop before reinstalling or
+restoring an older package. Keep the previous tested package for rollback.
 
-```sh
-# Выберите фактический YAM model ID; файл migrate-shared.sh передайте на колонку.
-sh /path/to/migrate-shared.sh apply yandexstation_2
-# На Mini вместо него: apply yandexmini_3_pro
-```
+## Validation / limits
 
-Helper сохраняет исходный `service.sh` рядом как `service.before-yam.sh`,
-останавливает старые процессы и ставит локальный startup guard. Native init и
-внешний keeper больше не запустят старый receiver. Rootfs, Алиса, SSH, OTA,
-firewall и настройки ALSA не изменяются. Для другой прежней установки не
-подставляйте случайный каталог: сначала определите её реального владельца.
+The 1.3.1 baseline passed real iPhone buffered AAC/48 kHz playback on both and
+simultaneously, 331 seconds continuous observation, receiver/timer crash recovery,
+stop/start and protected-state comparisons. The owner reported no audible dropouts
+or noticeable desync. These results do not automatically validate a later rebuild.
 
-Через CLI на компьютере (с `--url http://COLUMN:8099`) либо локальный CLI
-колонки, куда передан архив:
+Known baseline issue: reconnection may take 20–25 seconds, Mini first then Station 2;
+earlier iOS connection errors and intermittent disappearance remain unexplained.
+One event-channel RTSP 400 was received from iPhone before a successful retry.
+The sender is jailbroken with tweaks; its contribution has not been isolated.
+No measured cause or fix is claimed. Lossless/surround input, 24-bit DAC output,
+Plum hardware and a full reboot after the latest package are unverified.
 
-```sh
-yam install /path/to/station-airplay-1.3.0-station2.yap
-yam enable station-airplay
-yam ps
-yam logs station-airplay
-```
-
-При закрытом WAN передавайте локальный архив. Старый AirPlay должен быть
-остановлен **до enable**. Сохранены имена `Yandex Station 2 AirPlay` и
-`Yandex Mini 3 Pro AirPlay`.
-
-## Управление и диагностика
-
-```sh
-yam stop station-airplay
-yam run --detach station-airplay
-yam disable station-airplay
-yam stop station-airplay
-# Вернуть автозапуск и запустить сервис:
-yam enable station-airplay
-```
-
-В YAM 0.1.13 `run` без `--detach` ждёт окончания сервиса, а `disable` снимает
-автозапуск и сам по себе не останавливает текущий процесс. Для полного
-отключения/удаления всегда делайте disable **и** stop перед `yam rm`.
-
-`yam logs` показывает запуск/ошибки supervisor. Подробные receiver/Avahi/D-Bus
-логи находятся в `/run/station-airplay/*.log` и ограничены 128 КиБ каждый.
-Аудиопоток не пишет кэш на flash. При аварии дочернего процесса supervisor
-останавливает остальных своих детей и повторяет запуск через 3 секунды, максимум
-пять восстановлений за один запуск; неисправный startup выдаёт явную ошибку.
-
-Avahi работает на приватном D-Bus и в отдельном mount namespace. Записи
-passwd/group видны только его процессу. Stock mDNS продолжает публиковать адрес;
-профиль вычисляет штатный hostname из модели и `androidboot.serialno` в
-`/proc/cmdline`, не публикуя конкурирующую адресную запись. Серийные номера не
-зашиты в исходники. На неизвестной модели/отсутствующем serial запуск отказывает.
-
-После установки пакет полностью независим от старого каталога AirPlay и его
-service.sh. Старые файлы остаются исключительно для отката.
-
-## Откат
-
-```sh
-yam disable station-airplay
-yam stop station-airplay
-sh /path/to/migrate-shared.sh rollback yandexstation_2
-# Для Mini: rollback yandexmini_3_pro
-```
-
-Helper откажет, если другой receiver ещё работает; затем восстановит исходный
-service.sh и запустит прежний сервис. После проверки можно удалить YAM-пакет.
-Не удаляйте старые файлы и backup до подтверждения воспроизведения владельцем.
-
-## Историческая проверка AirPlay 1 / 1.2.0 (2026-10-25)
-
-На обеих моделях до миграции прошёл один 8-секундный PCM/RAOP поток. После
-установки через API YAM прошли по два последовательных 8-секундных потока с
-UDP timing. С другого компьютера обнаружены оба `_raop._tcp` сервиса, их
-штатные hostname, адреса и порт 5000; rename-loop отсутствует.
-
-На обеих проверены stop/run, disable+stop/enable, завершение трёх дочерних
-процессов, один receiver после запуска, отсутствие повторного standalone
-старта и ограничение RAM-логов. SHA256 системных/защитных файлов, YAM settings,
-boot ID, Wi-Fi carrier counter и PID maind/quasar не изменились.
-
-Это доказывает протокол, передачу PCM, lifecycle и сохранность проверенного
-состояния. Владелец отдельно подтвердил на обеих колонках слышимый звук с iPhone,
-громкость, повторное подключение и голос Алисы: «На обеих всё работает».
-Это пользовательское подтверждение, отдельное от автоматических PCM-тестов.
-На обеих также проверены принудительное завершение receiver (автовосстановление)
-и завершение yamd: встроенный supervisor колонки восстановил daemon и оба
-enabled YAM-пакета. Старый receiver не остался сиротой, дубликатов нет;
-webpanel-agent восстановлен, защищённое состояние и процессы Алисы сохранены.
-
-Перезагрузка всей колонки и новая аппаратная проверка Plum в этой сессии не
-проводились. Исходные тесты Plum renderer/API и обе сборки Go проходят.
+See [AIRPLAY2.md](AIRPLAY2.md) for protocol checks and
+[CONTRIBUTE.md](../CONTRIBUTE.md) for extension/icon rules.
