@@ -5,8 +5,8 @@ P=${AP2_BUILD_ROOT:?Set AP2_BUILD_ROOT to the prepared sysroot/build directory}
 abi=$1
 for archive in shairport-sync-5.6.2.tar.gz nqptp-1.2.9.tar.gz ffmpeg-7.1.3.tar.xz; do cp "$ROOT/third_party/$archive" "$P/$archive"; done
 case "$abi" in
- armhf) triplet=arm-linux-gnueabihf; ffarch=arm; cpu=cortex-a7; ssl=1.1 ;;
- arm64) triplet=aarch64-linux-gnu; ffarch=aarch64; cpu=cortex-a53; ssl=3 ;;
+ armhf) triplet=arm-linux-gnueabihf; ffarch=arm; cpu=cortex-a7; crypto=mbedtls; metadata=--with-metadata; extra="-mthumb -flto"; ssl=1.1 ;;
+ arm64) triplet=aarch64-linux-gnu; ffarch=aarch64; cpu=cortex-a53; crypto=openssl; metadata=""; extra=""; ssl=3 ;;
  *) exit 2 ;;
 esac
 r=$P/$abi/sysroot
@@ -28,12 +28,13 @@ cp "$P/$abi/stock-libasound.so.2" "$r/usr/lib/$triplet/libasound.so.2"
 cp "$P/$abi/stock-libdbus-1.so.3" "$r/usr/lib/$triplet/libdbus-1.so.3"
 ln -sf libasound.so.2 "$r/usr/lib/$triplet/libasound.so"
 ln -sf libdbus-1.so.3 "$r/usr/lib/$triplet/libdbus-1.so"
-# Use matching stock OpenSSL (1.1 on Station 2, 3 on Mini); never redistribute it.
-# The caller supplies the corresponding development headers in this private sysroot.
-for lib in crypto ssl; do
- cp "$P/$abi/stock-lib$lib.so.$ssl" "$r/usr/lib/$triplet/lib$lib.so.$ssl"
- ln -sf "lib$lib.so.$ssl" "$r/usr/lib/$triplet/lib$lib.so"
-done
+# AArch64 uses firmware OpenSSL; ARMhf statically links minimal mbedcrypto.
+if [ "$crypto" = openssl ]; then
+ for lib in crypto ssl; do
+  cp "$P/$abi/stock-lib$lib.so.$ssl" "$r/usr/lib/$triplet/lib$lib.so.$ssl"
+  ln -sf "lib$lib.so.$ssl" "$r/usr/lib/$triplet/lib$lib.so"
+ done
+fi
 for lib in popt config avahi-client avahi-common sodium gcrypt gpg-error uuid; do
  test -f "$r/usr/lib/$triplet/lib$lib.a"
  if test -L "$r/usr/lib/$triplet/lib$lib.so"; then unlink "$r/usr/lib/$triplet/lib$lib.so"; fi
@@ -41,7 +42,7 @@ done
 export CC="$triplet-gcc --sysroot=$r"
 export PKG_CONFIG_SYSROOT_DIR="$r"
 export PKG_CONFIG_LIBDIR="$r/usr/lib/$triplet/pkgconfig:$r/usr/lib/pkgconfig:$r/usr/share/pkgconfig"
-export CFLAGS="-Os -ffunction-sections -fdata-sections -nostdinc -isystem /usr/lib/gcc-cross/$triplet/13/include -isystem $r/usr/include/$triplet -isystem $r/usr/include -ffile-prefix-map=$w=. -ffile-prefix-map=$P=."
+export CFLAGS="-Os $extra -ffunction-sections -fdata-sections -nostdinc -isystem /usr/lib/gcc-cross/$triplet/13/include -isystem $r/usr/include/$triplet -isystem $r/usr/include -ffile-prefix-map=$w=. -ffile-prefix-map=$P=."
 export CPPFLAGS="-I$r/usr/include -I$r/usr/include/$triplet -I$r/usr/include/dbus-1.0 -I$r/usr/lib/$triplet/dbus-1.0/include"
 export LDFLAGS="-Wl,--gc-sections -Wl,-z,max-page-size=4096 -L$r/usr/lib/$triplet -L$r/lib/$triplet -L$r/usr/lib -Wl,-rpath-link,$r/usr/lib/$triplet -Wl,-rpath-link,$r/lib/$triplet"
 export LIBS='-lavahi-common -lgpg-error -ldbus-1 -ldl -lm -pthread'
@@ -64,8 +65,9 @@ if [ ! -d "$w/shairport-sync-5.6.2" ]; then tar -xf "$P/shairport-sync-5.6.2.tar
 (
  cd "$w/shairport-sync-5.6.2"
  if ! grep -q '"general.model"' shairport.c; then patch -p1 < "$ROOT/support/homepod-model.patch"; fi
+ if ! grep -q 'cannot derive AirPlay identity' shairport.c; then patch -p1 < "$ROOT/support/mbedtls-ap2.patch"; fi
  autoreconf -fi > "$P/$abi/autoreconf.log" 2>&1
- ./configure --host="$triplet" --with-os=linux --with-alsa --with-avahi --with-ssl=openssl --with-airplay-2 \
+ ./configure --host="$triplet" --with-os=linux --with-alsa $metadata --with-avahi --with-ssl="$crypto" --with-airplay-2 \
   --without-soxr --without-dbus-interface --without-mpris-interface --without-systemd-startup --sysconfdir=/etc \
   > "$P/$abi/configure.log" 2>&1
  make clean > /dev/null

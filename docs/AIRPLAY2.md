@@ -1,57 +1,39 @@
-# AirPlay 2: Station 2 and Mini 3 Pro
+# AirPlay 2 runtime
 
-Shairport Sync **5.6.2**, NQPTP **1.2.9 / smi11**. The original Plum backend is
-retained. [SHARED_MODELS.md](SHARED_MODELS.md) records firmware, PCM and rollback.
+All models use upstream Shairport Sync **5.6.2**, FFmpeg **7.1.3** and one NQPTP
+**1.2.9/smi11**. There is one source engine, compiled for the two native audio
+ABIs: ARMhf for Light2/Midi/Station2 and AArch64 for Mini3Pro.
 
-## Runtime
+One packed static ARMv7 supervisor, one original Avahi0.7 daemon, one private
+ARMhf libc and one small namespace helper replace the parallel runtimes.
+The AArch64 receiver uses firmware libc/ALSA/D-Bus/OpenSSL and packaged libplist.
+ARMhf uses minimal static Mbed TLS crypto; no OpenSSL library is shipped.
+D-Bus is rebuilt without systemd, removing its unrelated dependency chain.
+No firmware library is redistributed and no receiver is downloaded at runtime.
 
-One static ARMv7 Go supervisor runs on all supported kernels. Station 2 uses an
-ARMhf receiver, Mini 3 Pro AArch64, following stock ALSA rather than kernel ABI.
-One common AArch64 loader/libc serves Avahi, namespace helper and Mini's receiver;
-Station 2 retains its ARMhf libc/loader. Stock ALSA/OpenSSL are loaded from firmware,
-and a private D-Bus/Avahi instance advertises without modifying system accounts,
-D-Bus or the read-only root. No captured firmware library is redistributed.
+Station2/Mini3Pro retain direct shared ALSA **48kHz/S16_LE stereo** and Alice.
+A single ARMhf receiver with external aplay was rejected for these profiles:
+it would remove native ALSA latency feedback and weaken multiroom synchronization.
+Midi retains the upstream FIFO/aplay path and renderer; Light2 retains its PCM/UI.
 
-Output is shared stereo **48 kHz/S16_LE**, retaining Alice. The new receiver probes
-ALSA with resampling disabled; both mixers reject 44.1 kHz in that probe.
-Upstream supports buffered AAC/ALAC and PTP realtime ALAC, including lossless
-24-bit/48 kHz input; the output profile is still S16_LE. 96/192 kHz/Atmos are not
-claimed. See [upstream capabilities](https://github.com/mikebrady/shairport-sync/blob/5.6.2/AIRPLAY2.md).
+The supervisor owns its children, checks ports, bounds RAM logs, retries crashes
+and keeps YAM tokens private. Private D-Bus/mount namespace preserve global system
+accounts and configuration. Build and package: [BUILD.md](../source/BUILD.md).
+One deterministic `.yap`, one YAM ID; no model-specific archive generator.
 
-NQPTP owns UDP319/320 and localhost9000. The supervisor checks occupied ports,
-stops only its four children, retries their unexpected exits and bounds RAM logs.
-The namespace helper dynamically uses the common loader; it never changes global
-passwd/group. The source-only migration helper guards previous standalone installs.
+Station2/Midi advertise HomePod; Mini3Pro/Light2 advertise HomePod mini through
+`general.model`, consistently in Bonjour and `/info`. No HomePod/Siri feature
+capabilities are added. [CONTRIBUTE.md](../CONTRIBUTE.md) documents profile/icon rules.
 
-## Build / package
+## Verification boundaries
 
-Follow [BUILD.md](../source/BUILD.md). `python3 scripts/package.py` creates one
-universal `.yap`/plugin ID. Optional local `--model` filters conserve flash; they
-are not separate YAM registry entries. Runtime + license notices are packaged;
-source/build/docs remain in Git. Keep the previous tested package for rollback.
+1.3.2 owner confirmed both playing and distinct icons. Initial1.4.0 unified-runtime
+build passed lifecycle/crash/HAP/PTP on both; owner confirmed Mini audio/Alice.
+Fresh results for the final dependency rebuild are reported in PR#2. Baseline
+331-second continuous playback is evidence for1.3.1, not every subsequent build.
 
-1.3.2 removes the duplicate supervisor, obsolete AP1 receivers and duplicate
-AArch64 libc. Receivers use firmware OpenSSL, small FFmpeg and linker section GC.
-Each distinct third-party copyright notice is preserved byte-for-byte once.
-The user's reference ap2-min kit uses older 4.3.7/FFmpeg4; its dependency-pruning
-idea was compared, while this port retains 5.6.2/FFmpeg7 and both tested ABIs.
-
-## Presentation / checks
-
-`general.model` consistently controls Bonjour and `/info`: Station2 HomePod,
-Mini3Pro HomePod mini. Light2's original HomePod mini identity is unchanged.
-This adds no Siri/HomePod firmware capability bits. [CONTRIBUTE.md](../CONTRIBUTE.md)
-contains the full icon mapping and extension rules. iOS may cache the old icon.
-
-1.3.1 baseline: real iPhone AAC/48k playback on both/simultaneously,331s continuous
-observation without restarts, owner heard no interruptions/desync. 1.3.2: startup,
-stop/run, disable+stop/enable, legacy guard and receiver/NQPTP crash recovery pass
-on both; protected files/boot/Wi-Fi carrier/Alice PIDs remain unchanged. Actual
-playback after the new rebuild requires a fresh owner check.
-
-Known issue: iPhone reconnection can take20–25s; earlier errors/disappearance are
-unexplained. Captures showed a later Station2 control connection and an event
-response400 from iPhone. Cause is unproven, including any jailbreak/tweak effect.
-PR is open at the owner's request with this limitation disclosed.
-The pyatv realtime NTP/501 path is not a buffered/PTP audio test. Lossless/surround,
-24-bit DAC output, Plum hardware and full reboot are not claimed tested.
+**Known issue remains:** this owner's iPhone may take20–25s to reconnect; earlier
+connection errors/disappearance have no established root cause. Jailbreak/tweak
+involvement is unproven. No reconnection fix is claimed by size optimization.
+Lossless/surround,24-bit DAC output, Light2/Midi hardware and full reboot after
+this upgrade are unverified. Pyatv HAP/PTP setup alone is not an audio test.

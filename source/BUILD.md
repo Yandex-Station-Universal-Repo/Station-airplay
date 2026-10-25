@@ -1,47 +1,52 @@
 # Build
 
-Go >=1.23; no external Go modules. Run Linux tests in Linux/WSL.
+Go >=1.23, Python >=3.8; Linux/WSL for tests. One universal YAM package.
 
 ```sh
 cd source
 go test ./...
 go vet ./...
-GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o ../bin/station-airplay .
+GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o ../bin/station-airplay .
 cd ..
+upx --best --lzma bin/station-airplay # UPX 5.2.1; only the static supervisor
+upx -t bin/station-airplay
 python3 scripts/package.py
 ```
 
-One static ARMv7 supervisor runs on all three supported kernels (ARM compatibility
-was checked on Station 2 and Mini 3 Pro). New profiles must verify this before
-extending compatibility; kernel architecture does not determine the audio ABI.
+The checked-in executable is packed; `upx -d` restores it for inspection. Packing
+needs no installed decompressor on speakers. Test actual execution and
+`os.Executable()`-based package resolution on both kernels after changing packers.
 
-## AirPlay 2 receiver
+## Native components
 
-`scripts/build-airplay2.sh armhf|arm64` builds Shairport Sync 5.6.2 and NQPTP 1.2.9
-with matching smi11, using pinned upstream archives in `third_party/` and
-`AP2_BUILD_ROOT/{armhf,arm64}/sysroot` with the development packages recorded in
-`third_party/airplay2-build.json`. Matching firmware ALSA, D-Bus and OpenSSL are
-private link inputs (`stock-lib*.so.*`); they are never redistributed. Station 2
-requires OpenSSL 1.1 headers/libs, Mini 3 Pro OpenSSL 3. FFmpeg 7.1.3 is built with
-AAC/ALAC/PCM decoders only, `--enable-small`, section GC, no network/programs/docs.
-Keep these sources and the model patch available when redistributing binaries.
-
-Copy the stripped outputs to `runtime/ap2-{armhf,aarch64}/bin`. ARMhf retains its
-private Debian libc/loader/libm/libplist under `runtime/ap2-armhf/lib`.
-`runtime/aarch64/lib` holds the newer common libc/loader/libm used by Avahi,
-namespace helper and the AArch64 receiver/timer, plus libplist and the small compatibility DSOs from the receiver
-sysroot. Other Avahi dependencies are pinned in `third_party/debian-runtime.json`.
-Do not copy the second libc/loader  into the package.
-The original Plum binaries and libraries remain unchanged.
-
-Build the small namespace helper against the AArch64 receiver development sysroot:
+Prepare `AP2_BUILD_ROOT/{armhf,arm64}/sysroot` with the development packages pinned
+in `third_party/airplay2-build.json`. Host tools: GCC/G++13 ARMhf cross compilers,
+AArch64 GCC, CMake, autotools, make and libexpat1-dev headers. Captured firmware
+ALSA/D-Bus are private link inputs, plus OpenSSL3 for AArch64; never redistribute
+them. Then:
 
 ```sh
-aarch64-linux-gnu-gcc --sysroot="$AP2_BUILD_ROOT/arm64/sysroot" -Os -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,-z,max-page-size=4096 -s support/avahi-namespace.c -o bin/avahi-namespace-aarch64
+scripts/build-runtime.sh
+scripts/build-airplay2.sh armhf
+scripts/build-airplay2.sh arm64
 ```
 
-It is started with the common private loader, not the stock firmware loader.
-Check `readelf -d/-V`, loader resolution and actual playback on both devices.
-`python3 scripts/package.py` produces one universal YAM package/ID. Optional
-`--model` filters are local flash-constrained builds, not separate registry plugins.
-Packages contain runtime + notices; source, build scripts and docs stay in Git.
+`build-runtime.sh` builds D-Bus1.16.2 without systemd/X11 and static Mbed TLS3.6.7
+crypto with `support/mbedtls-config.h`. Shairport uses RSA/AES/MD5/SHA, while
+pairing/AEAD remain in libsodium. The Mbed patch fixes an unconditional OpenSSL
+MD5 call in AirPlay2 identity generation and removes unused TLS/X509 link probes.
+It preserves the same digest bytes; it does not implement an AirPlay protocol.
+`homepod-model.patch` selects the same identity in Bonjour and `/info`.
+
+Copy stripped ARMhf outputs to `bin/shairport-sync-ap2` and `bin/nqptp`, AArch64
+receiver to `bin/shairport-sync-ap2-aarch64`. Both use Shairport5.6.2/FFmpeg7.1.3;
+one ARMhf NQPTP1.2.9/smi11 serves both ABIs. Keep one ARMhf libc2.36/loader/libm/
+libplist set in `lib`, plus the necessary original Avahi0.7/ALSA dependencies.
+AArch64 loads firmware libc/ALSA/OpenSSL/D-Bus; only libplist is in `lib/aarch64`.
+Station2 explicitly preloads firmware ALSA for its shared dmix. Legacy Light/Midi
+keep their existing audio/renderers, using the common current ARMhf engine.
+
+After rebuilding, inspect `readelf -d/-V`, actual loader resolution and library
+closure. Preserve all selected codecs and legal notices. Check unit tests,
+metadata/clock/RGB, lifecycle/crash recovery, native audio and multiroom; new
+Light/Midi runtime upgrades require hardware validation by their owners.

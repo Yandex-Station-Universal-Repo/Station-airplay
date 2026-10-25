@@ -49,11 +49,11 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
-			p, err := sharedProfileFor(yamDevice{Model: tc.model, Architecture: "aarch64"})
-			if err != nil {
-				t.Fatal(err)
+			p, ok := profileFor(tc.model)
+			if !ok {
+				t.Fatal("missing shared profile")
 			}
-			if p.PCM != tc.pcm || p.ReceiverABI != tc.abi {
+			if p.pcm != tc.pcm || p.receiverABI != tc.abi || !p.quasarCoexist {
 				t.Fatalf("wrong ABI/audio contract: %+v", p)
 			}
 			conf := receiverConfig(p)
@@ -67,15 +67,15 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 			}
 		})
 	}
-	for _, model := range []string{"", "yandexmidi", "cucumber", "unknown", "yandexplum"} {
-		if _, err := sharedProfileFor(yamDevice{Model: model}); err == nil {
+	for _, model := range []string{"", "yandexmini_2", "cucumber", "unknown"} {
+		if _, ok := profileFor(model); ok {
 			t.Fatalf("model %q guessed instead of rejected", model)
 		}
 	}
 }
 
 func TestChildrenCannotInheritYAMTokenOrPlumLibraries(t *testing.T) {
-	env := audioEnv([]string{"PATH=/bin", "YAM_API_TOKEN=private", "YAM_API_URL=http://localhost", "LD_LIBRARY_PATH=/plum/lib", "HOME=/plum", "DBUS_SYSTEM_BUS_ADDRESS=unix:path=/system"}, "/private/bus")
+	env := audioEnv([]string{"PATH=/bin", "YAM_API_TOKEN=private", "YAM_API_URL=http://localhost", "LD_LIBRARY_PATH=/plum/lib", "HOME=/plum", "DBUS_SYSTEM_BUS_ADDRESS=unix:path=/system"}, "/run/station-airplay", "/private/bus")
 	joined := strings.Join(env, "\n")
 	for _, bad := range []string{"YAM_API_", "private\n", "/plum", "/system"} {
 		if strings.Contains(joined, bad) {
@@ -89,13 +89,14 @@ func TestChildrenCannotInheritYAMTokenOrPlumLibraries(t *testing.T) {
 
 func TestStockMDNSHostname(t *testing.T) {
 	for model, want := range map[string]string{"yandexstation_2": "yandex-station-gen2-TEST123", "yandexmini_3_pro": "Yandex-Station-Mini-3-Pro-TEST123"} {
-		got, err := sharedHostname(model, "root=ubi androidboot.serialno=TEST123 quiet")
+		p, _ := profileFor(model)
+		got, err := stockHostname(p.mdnsHostPrefix, "root=ubi androidboot.serialno=TEST123 quiet")
 		if err != nil || got != want {
 			t.Fatalf("hostname %q %v", got, err)
 		}
 	}
 	for _, cmdline := range []string{"", "androidboot.serialno=../bad", "androidboot.serialno=bad\""} {
-		if _, err := sharedHostname("yandexstation_2", cmdline); err == nil {
+		if _, err := stockHostname("yandex-station-gen2", cmdline); err == nil {
 			t.Fatalf("accepted unsafe serial %q", cmdline)
 		}
 	}

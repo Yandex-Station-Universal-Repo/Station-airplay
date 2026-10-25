@@ -62,5 +62,7 @@
       {"Package": "uuid-dev", "Version": "2.38.1-5+deb12u3", "Source": "util-linux", "Filename": "pool/main/u/util-linux/uuid-dev_2.38.1-5+deb12u3_arm64.deb", "SHA256": "681d5cb85435b9c9e5b7798d86b508ba930e3cbc599bd550446ba12780e4f3e6"}
     ]
   },
-  "openssl_headers": {"armhf": "OpenSSL 1.1.1w development headers (Debian bullseye libssl-dev); firmware libcrypto.so.1.1", "arm64": "Recorded Debian libssl-dev3 headers; firmware libcrypto.so.3"}
+  "openssl_headers": {"armhf": "Mbed TLS3.6.7 static minimal crypto; no OpenSSL linked", "arm64": "Recorded Debian libssl-dev3 headers; firmware libcrypto.so.3"},
+  "runtime_sources": {"dbus-1.16.2.tar.xz": {"sha256": "0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2"}, "mbedtls-3.6.7.tar.bz2": {"sha256": "a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6"}},
+  "packing": {"tool": "UPX 5.2.1", "args": "--best --lzma", "target": "bin/station-airplay only", "url": "https://github.com/upx/upx/releases/tag/v5.2.1"}
 }

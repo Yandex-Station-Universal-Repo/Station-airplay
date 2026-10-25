@@ -14,12 +14,6 @@ import (
 	"time"
 )
 
-// A model profile is an audio/ABI contract, not a marketing name or kernel arch.
-// AirPlay 2 receivers retain each model's proven shared ALSA device.
-type modelProfile struct {
-	Model, Name, PCM, ReceiverABI, AirPlayModel string
-}
-
 func watchParent(ctx context.Context, cancel context.CancelFunc, parent int, current func() int) {
 	if parent <= 1 {
 		return
@@ -71,17 +65,6 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 	return length, nil
 }
 
-func sharedProfileFor(d yamDevice) (modelProfile, error) {
-	switch d.Model {
-	case "yandexstation_2":
-		return modelProfile{d.Model, "Yandex Station 2 AirPlay", "plug:dmix_spk", "armhf", "AudioAccessory1,1"}, nil
-	case "yandexmini_3_pro":
-		return modelProfile{d.Model, "Yandex Mini 3 Pro AirPlay", "speakers", "aarch64", "AudioAccessory5,1"}, nil
-	default:
-		return modelProfile{}, fmt.Errorf("no shared-audio profile for YAM model %q", d.Model)
-	}
-}
-
 func run(ctx context.Context) error {
 	api, err := newYAMAPI()
 	if err != nil {
@@ -96,12 +79,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if d.Model == "plum" || d.Model == "yandexplum" || d.Model == "yandexmidi" {
-		return runPlum(ctx)
+	p, ok := profileFor(d.Model)
+	if !ok {
+		return fmt.Errorf("unsupported YAM model %q", d.Model)
 	}
-	p, err := sharedProfileFor(d)
-	if err != nil {
-		return err
+	if p.pcm == "" {
+		return runPlum(ctx)
 	}
 	if d.Architecture != "aarch64" {
 		return errors.New("Station 2/Mini 3 Pro profiles require an AArch64 kernel")
@@ -109,7 +92,7 @@ func run(ctx context.Context) error {
 	return runShared(ctx, p)
 }
 
-func receiverConfig(p modelProfile) string {
+func receiverConfig(p stationProfile) string {
 	return fmt.Sprintf(`general = {
  name = %q;
  model = %q;
@@ -130,23 +113,26 @@ alsa = {
  disable_standby_mode = "never";
 };
 metadata = { enabled = "no"; };
-`, p.Name, p.AirPlayModel, p.PCM)
+`, p.name, p.airplayModel, p.pcm)
 }
 
-func audioEnv(environ []string, bus string) []string {
+func audioEnv(environ []string, home, bus string) []string {
 	env := []string{}
 	for _, s := range environ {
-		if strings.HasPrefix(s, "YAM_API_") || strings.HasPrefix(s, "LD_LIBRARY_PATH=") || strings.HasPrefix(s, "DBUS_SYSTEM_BUS_ADDRESS=") || strings.HasPrefix(s, "HOME=") {
+		if strings.HasPrefix(s, "YAM_API_") || strings.HasPrefix(s, "LD_LIBRARY_PATH=") || (bus != "" && strings.HasPrefix(s, "DBUS_SYSTEM_BUS_ADDRESS=")) || strings.HasPrefix(s, "HOME=") {
 			continue
 		}
 		env = append(env, s)
 	}
-	return append(env, "DBUS_SYSTEM_BUS_ADDRESS=unix:path="+bus, "HOME=/run/station-airplay")
+	if bus != "" {
+		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS=unix:path="+bus)
+	}
+	return append(env, "HOME="+home)
 }
 
 // Stock mDNS already owns this address/name. Publishing another address record
 // triggers a rename loop on these firmwares, even with a different host label.
-func sharedHostname(model, cmdline string) (string, error) {
+func stockHostname(prefix, cmdline string) (string, error) {
 	serial := ""
 	for _, field := range strings.Fields(cmdline) {
 		if strings.HasPrefix(field, "androidboot.serialno=") {
@@ -161,14 +147,7 @@ func sharedHostname(model, cmdline string) (string, error) {
 			return "", errors.New("invalid boot serial")
 		}
 	}
-	switch model {
-	case "yandexstation_2":
-		return "yandex-station-gen2-" + serial, nil
-	case "yandexmini_3_pro":
-		return "Yandex-Station-Mini-3-Pro-" + serial, nil
-	default:
-		return "", errors.New("unknown stock mDNS hostname profile")
-	}
+	return prefix + "-" + serial, nil
 }
 
 type childFailure struct {
@@ -180,7 +159,7 @@ func (e *childFailure) Error() string {
 	return fmt.Sprintf("%s exited unexpectedly: %v", e.name, e.err)
 }
 
-func runShared(ctx context.Context, p modelProfile) error {
+func runShared(ctx context.Context, p stationProfile) error {
 	for attempts := 0; ; attempts++ {
 		err := serveShared(ctx, p)
 		if ctx.Err() != nil {
@@ -199,7 +178,7 @@ func runShared(ctx context.Context, p modelProfile) error {
 	}
 }
 
-func serveShared(ctx context.Context, p modelProfile) error {
+func serveShared(ctx context.Context, p stationProfile) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -220,16 +199,8 @@ func serveShared(ctx context.Context, p modelProfile) error {
 		return err
 	}
 	defer syscall.Flock(int(lk.Fd()), syscall.LOCK_UN)
-	// Do not terminate somebody else's receiver, change ALSA, or stop Alice.
-	listener, err := net.Listen("tcp4", ":5000")
-	if err != nil {
-		return fmt.Errorf("AirPlay port 5000 occupied; stop the previous receiver before migration: %w", err)
-	}
-	listener.Close()
-	for _, program := range []string{"shairport-sync", "shairport-sync-ap2", "airplayd", "nqptp"} {
-		if processExists(program) {
-			return fmt.Errorf("existing %s receiver must be stopped explicitly", program)
-		}
+	if err = preflight(p); err != nil {
+		return err
 	}
 	for _, port := range []int{319, 320, 9000} {
 		socket, e := net.ListenPacket("udp4", fmt.Sprintf(":%d", port))
@@ -263,32 +234,11 @@ func serveShared(ctx context.Context, p modelProfile) error {
 	if err = os.WriteFile(filepath.Join(state, "bus.conf"), []byte(busConf), 0600); err != nil {
 		return err
 	}
-	cmdline, err := os.ReadFile("/proc/cmdline")
+	avahiConf, err := avahiConfig(root, state, p)
 	if err != nil {
 		return err
 	}
-	host, err := sharedHostname(p.Model, string(cmdline))
-	if err != nil {
-		return err
-	}
-	avahiConf := fmt.Sprintf(`[server]
-host-name=%s
-use-ipv4=yes
-use-ipv6=no
-allow-interfaces=wlan0
-disallow-other-stacks=no
-enable-dbus=yes
-[wide-area]
-enable-wide-area=no
-[publish]
-publish-hinfo=no
-publish-workstation=no
-publish-addresses=no
-`, host)
-	if err = os.WriteFile(filepath.Join(state, "avahi.conf"), []byte(avahiConf), 0600); err != nil {
-		return err
-	}
-	env := audioEnv(os.Environ(), bus)
+	env := audioEnv(os.Environ(), state, bus)
 	children := []*child{}
 	defer func() { stopChildren(children) }()
 	exits := make(chan exitInfo, 4)
@@ -338,15 +288,13 @@ publish-addresses=no
 	if err = ready(func() bool { fi, e := os.Stat(bus); return e == nil && fi.Mode()&os.ModeSocket != 0 }); err != nil {
 		return err
 	}
-	rt := filepath.Join(root, "runtime", "aarch64")
-	ld64 := filepath.Join(rt, "lib/ld-linux-aarch64.so.1")
-	libs64 := filepath.Join(rt, "lib")
-	if err = launch("avahi-namespace-aarch64", ld64, "--library-path", libs64, filepath.Join(root, "bin/avahi-namespace-aarch64"), state,
-		ld64, "--library-path", libs64, filepath.Join(rt, "bin/avahi-daemon"),
-		"-f", filepath.Join(state, "avahi.conf"), "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title"); err != nil {
+	ld32 := filepath.Join(root, "lib/ld-linux-armhf.so.3")
+	libs := filepath.Join(root, "lib")
+	if err = launch("avahi-namespace", ld32, "--library-path", libs, filepath.Join(root, "bin/avahi-namespace"), state,
+		ld32, "--library-path", libs, filepath.Join(root, "bin/avahi-daemon"),
+		"-f", avahiConf, "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title"); err != nil {
 		return err
 	}
-	// Query our private bus, not another Avahi instance in /proc.
 	if err = ready(func() bool {
 		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
@@ -357,14 +305,20 @@ publish-addresses=no
 	}); err != nil {
 		return err
 	}
-	ap2 := filepath.Join(root, "runtime", "ap2-"+p.ReceiverABI)
-	loader, libs := ld64, libs64
-	if p.ReceiverABI == "armhf" {
-		loader, libs = filepath.Join(ap2, "lib/ld-linux-armhf.so.3"), filepath.Join(ap2, "lib")
-	}
 	launchAP2 := func(name string, args ...string) error {
-		// Only this process uses the private libc; stock ALSA/D-Bus stay on device.
-		argv := []string{"--library-path", libs + ":/usr/lib:/lib", filepath.Join(ap2, "bin", name)}
+		loader, paths, binary := ld32, libs, name
+		var preload []string
+		if name == "shairport-sync" {
+			binary = "shairport-sync-ap2"
+			if p.receiverABI == "aarch64" {
+				loader, paths, binary = "/lib/ld-linux-aarch64.so.1", filepath.Join(libs, "aarch64")+":/usr/lib:/lib", binary+"-aarch64"
+			} else {
+				// Shared dmix must use the firmware ALSA ABI, not the legacy Light library.
+				preload = []string{"--preload", "/usr/lib/libasound.so.2"}
+			}
+		}
+		argv := append([]string{"--library-path", paths}, preload...)
+		argv = append(argv, filepath.Join(root, "bin", binary))
 		return launch(name, loader, append(argv, args...)...)
 	}
 	if err = launchAP2("nqptp", "-v"); err != nil {
@@ -383,7 +337,7 @@ publish-addresses=no
 	if err = launchAP2("shairport-sync", "-c", conf, "-v", "--statistics"); err != nil {
 		return err
 	}
-	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.Model, p.PCM)
+	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.models[0], p.pcm)
 	select {
 	case <-ctx.Done():
 		return nil
