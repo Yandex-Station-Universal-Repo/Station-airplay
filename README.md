@@ -37,10 +37,10 @@ Clock/RGB обязательны только в исходных Plum/Midi-пр
 
 1. Установите [YAM](https://github.com/nyakokitsu/yam) по официальной инструкции. Клиент `yam` запускается **на компьютере**, `yamd` — на Станции.
 2. При необходимости подготовьте аудиоокружение устройства по [инструкции для Лайт 2](docs/PLUM.md). Скрипты подготовки изменяют системную конфигурацию и не запускаются автоматически.
-3. Установите [готовый `.yap`](assets/station-airplay-1.1.5.yap) средствами YAM:
+3. Установите готовый .yap из ypkg репозитория средствами YAM:
 
    ```sh
-   yam install assets/station-airplay-1.1.5.yap
+   yam install station-airplay
    yam enable station-airplay
    yam ps
    ```
