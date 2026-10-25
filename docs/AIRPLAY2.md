@@ -67,13 +67,22 @@ disable+stop/enable, legacy startup guard and recovery from a killed receiver
 or NQPTP passed on both, without changing protected files, boot, Wi-Fi carrier
 count or Alice PIDs. Go tests/vet, both architecture builds and migration tests passed.
 
+Continuous simultaneous iPhone playback subsequently passed a 331-second
+observation on both models: all 12 samples per device showed active stereo
+48000/S16_LE output, with no probe errors, receiver restarts or mDNS hostname
+conflicts. Protected files, boot, Wi-Fi carrier counters and Alice PIDs remained
+unchanged. Recent receiver timing offsets were approximately 1.6–2 ms against
+the common clock; this is software timing telemetry, not a physical acoustic
+phase measurement.
+
 **Release gate still pending:** the owner reported intermittent disappearance
-and delayed connection during final iPhone testing. Both subsequently played
-simultaneously, but that does not establish stable reconnection. Packet capture
+and delayed connection during final iPhone testing. Sustained playback has
+passed; repeated reconnection, volume and Alice still need final confirmation.
+Packet capture
 showed Mini answering multicast discovery and exchanging IPv6 control traffic;
 its receiver and Wi-Fi carrier count remained unchanged in that observation.
-The cause of the intermittent behaviour is not established. Keep the upstream
-PR closed until repeated discovery/reconnection and sustained playback pass.
+The cause of the earlier intermittent behaviour is not established. Keep the
+upstream PR closed until repeated discovery/reconnection passes as well.
 
 The pyatv realtime V2 sender requests NTP, which upstream Shairport does not
 implement. Its 501 response is not a valid buffered/PTP playback test. Do not
