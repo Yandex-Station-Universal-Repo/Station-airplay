@@ -87,12 +87,20 @@ func run(ctx context.Context) error {
 		return runPlum(ctx)
 	}
 	if d.Architecture != "aarch64" {
-		return errors.New("Station 2/Mini 3 Pro profiles require an AArch64 kernel")
+		return errors.New("shared profiles require an AArch64 kernel")
 	}
 	return runShared(ctx, p)
 }
 
 func receiverConfig(p stationProfile) string {
+	device := p.pcm
+	meta := `metadata = { enabled = "no"; };`
+	if p.ui {
+		// spk_tee copies PCM into the visualizer FIFO and plays the same
+		// frames on the shared mixer. The mixer name stays in uiAsound.
+		device = "spk_tee"
+		meta = fmt.Sprintf("metadata = { enabled = \"yes\"; include_cover_art = \"no\"; pipe_name = %q; };", metadataFIFO)
+	}
 	return fmt.Sprintf(`general = {
  name = %q;
  model = %q;
@@ -112,8 +120,25 @@ alsa = {
  output_format = "S16_LE";
  disable_standby_mode = "never";
 };
-metadata = { enabled = "no"; };
-`, p.name, p.airplayModel, p.pcm)
+%s
+`, p.name, p.airplayModel, device, meta)
+}
+
+// uiAsound is the receiver's private ~/.asoundrc. The file plugin feeds the
+// clock visualizer; its slave is the firmware shared mixer, not hw:0,0.
+func uiAsound(pcm, fifo string) string {
+	return fmt.Sprintf(`pcm.spk_file {
+ type file
+ slave.pcm %q
+ file %q
+ format "raw"
+ perm 0666
+}
+pcm.spk_tee {
+ type plug
+ slave.pcm "spk_file"
+}
+`, pcm, fifo)
 }
 
 func audioEnv(environ []string, home, bus string) []string {
@@ -201,6 +226,27 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	defer syscall.Flock(int(lk.Fd()), syscall.LOCK_UN)
 	if err = preflight(p); err != nil {
 		return err
+	}
+	var api *yamAPI
+	var metaFD, audioFD int
+	if p.ui {
+		if api, err = newYAMAPI(); err != nil {
+			return err
+		}
+		if err = verifyYAM(api); err != nil {
+			return err
+		}
+		if err = os.WriteFile(filepath.Join(state, ".asoundrc"), []byte(uiAsound(p.pcm, audioFIFO)), 0600); err != nil {
+			return err
+		}
+		if audioFD, err = ensureFIFO(audioFIFO); err != nil {
+			return err
+		}
+		defer syscall.Close(audioFD)
+		if metaFD, err = ensureFIFO(metadataFIFO); err != nil {
+			return err
+		}
+		defer syscall.Close(metaFD)
 	}
 	for _, port := range []int{319, 320, 9000} {
 		socket, e := net.ListenPacket("udp4", fmt.Sprintf(":%d", port))
@@ -336,6 +382,10 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	}
 	if err = launchAP2("shairport-sync", "-c", conf, "-v", "--statistics"); err != nil {
 		return err
+	}
+	if p.ui {
+		fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=clock+led\n", version, p.models[0], p.pcm)
+		return renderDisplay(ctx, api, metaFD, audioFD, exits)
 	}
 	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.models[0], p.pcm)
 	select {

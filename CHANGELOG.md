@@ -1,3 +1,7 @@
+## 1.4.2
+
+- Light 2 (`yandexplum`, `plum`) uses the Station 2 shared mixer `plug:dmix_spk` with the ARMhf receiver and firmware ALSA, so Alice stays up. Avahi reuses `YandexLite-gen2-<device id>`. YAM takes the segment clock and the 3 LEDs for the whole time the service runs and restores the clock frame on stop.
+
 ## 1.4.1
 
 - Яндекс Станция Лайт (`yandexmicro`): shared-профиль по образцу Станции 2 — ARMhf receiver 5.6.2, общий `plug:dmix_spk` 48 кГц/S16_LE с прелоадом штатной ALSA, Алиса сохраняется, mDNS-хост `yandexmicro-<serial>`, иконка HomePod mini. Часы/RGB не управляются.

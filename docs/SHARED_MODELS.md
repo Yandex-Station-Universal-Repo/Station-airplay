@@ -4,13 +4,14 @@
 |---|---|---|---|
 | `yandexstation_2` | ARMhf | `plug:dmix_spk` | HomePod |
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
+| `yandexplum`, `plum` (Лайт 2) | ARMhf | `plug:dmix_spk` | HomePod mini |
 | `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
 
 Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
 `0.369.1.50.4795647264.20261021.107`; YAM 0.1.13. Both kernels execute the single
 static ARMv7 supervisor. Audio uses 48 kHz/S16 stereo and retains Alice.
 Both mixers reject 44.1 kHz when resampling is disabled in the new receiver.
-Clock/RGB remain with the upstream Light/Midi backend; these profiles do not touch them.
+Station 2, Mini 3 Pro and Lite do not touch clock or RGB. Light 2 plays through the same shared mixer and, while the service is running, YAM holds its segment clock and 3 LEDs. The hostname maind already publishes is `YandexLite-gen2-<device id>`.
 
 ## Install / rollback
 

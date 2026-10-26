@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.4.1"
+	version      = "Station airplay 1.4.2"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -126,7 +126,7 @@ type stationProfile struct {
 	colon     []string
 	// Quasar may keep running: audio goes through its shared dmix and the
 	// station volume stays canonical (needs the station-volume package for
-	// the sender's slider). Plum needs Alice stopped, as before.
+	// the sender's slider).
 	quasarCoexist bool
 	// mDNS host name Quasar already answers for, "<prefix>-<serial>"; avahi
 	// reuses it without address records so the two responders do not loop.
@@ -135,10 +135,16 @@ type stationProfile struct {
 	// plays on "speakers". The bundled (older) alsa-lib cannot attach to the
 	// dmix that Quasar's alsa-lib runs ("unable to create IPC shm instance").
 	pipeOutput bool
+	// ui: YAM clock writes save Alice's frame and take the segments. LED
+	// brightness writes detach her ring trigger. Hold both for the service
+	// lifetime; audio still goes through the shared PCM.
+	ui bool
 }
 
 var (
-	plumProfile = stationProfile{name: "plum", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}, airplayModel: "AudioAccessory5,1"}
+	// Light 2 is ARMhf userspace on an AArch64 kernel. maind publishes
+	// YandexLite-gen2-<device id>. /etc/asound.conf mixes on dmix_spk.
+	plumProfile = stationProfile{name: "Yandex Station Light 2 AirPlay", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", ui: true}
 	midiProfile = stationProfile{name: "midi", models: []string{"yandexmidi"}, leds: 24, digitBase: 1, quasarCoexist: true, mdnsHostPrefix: "yandex-station-midi", pipeOutput: true, airplayModel: "AudioAccessory1,1"}
 	profiles    = []stationProfile{plumProfile, midiProfile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
@@ -794,6 +800,74 @@ func verifyYAM(api *yamAPI) error {
 		return fmt.Errorf("YAM clock preflight failed: %w", e)
 	}
 	return nil
+}
+
+// renderDisplay holds the clock and ring for the whole service lifetime.
+// YAM takes them from Alice on the first write and gives the clock frame back
+// on clockOff. Idle is the time and a dark ring; playback uses the PCM tee.
+func renderDisplay(ctx context.Context, api *yamAPI, metaFD, audioFD int, exits <-chan exitInfo) error {
+	defer func() {
+		_ = api.ledOff()
+		_ = api.clockOff()
+	}()
+	state := &airplayState{status: "stopped"}
+	tz := clockZone()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	lastUIError := time.Time{}
+	lastClockError := time.Time{}
+	oldRing := ""
+	oldFrameKey := ""
+	lastRingSent, lastClockSent := time.Time{}, time.Time{}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ex := <-exits:
+			return &childFailure{ex.name, ex.err}
+		case now := <-tick.C:
+			if e := readFD(metaFD, func(buf []byte) {
+				state.meta.feed(buf, func(t, c string, raw []byte) { state.onMetadata(t, c, raw, now) })
+			}); e != nil {
+				return fmt.Errorf("metadata FIFO: %w", e)
+			}
+			if e := readFD(audioFD, func(buf []byte) { state.audio(buf, now) }); e != nil {
+				return fmt.Errorf("audio FIFO: %w", e)
+			}
+			state.rotate()
+			colors := state.ringFrame(now)
+			ringKey := strings.Join(colors, ",")
+			if ringKey != oldRing || now.Sub(lastRingSent) > 3*time.Second {
+				e := api.leds(colors)
+				logAPIError("ring", e, &lastUIError)
+				if e == nil {
+					oldRing = ringKey
+					lastRingSent = now
+				}
+			}
+			timeValue, frame := state.display(now, tz)
+			var key string
+			if frame == nil {
+				key = "time:" + timeValue
+			} else {
+				b, _ := json.Marshal(frame)
+				key = "seg:" + string(b)
+			}
+			if key != oldFrameKey || now.Sub(lastClockSent) >= 1200*time.Millisecond {
+				var err error
+				if frame == nil {
+					err = api.time(timeValue)
+				} else {
+					err = api.segments(frame)
+				}
+				logAPIError("clock", err, &lastClockError)
+				if err == nil {
+					oldFrameKey = key
+					lastClockSent = now
+				}
+			}
+		}
+	}
 }
 
 // YAM starts enabled services while the HTTP router is still coming up;

@@ -75,6 +75,28 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 	}
 }
 
+func TestLight2SharesMixerAndHoldsDisplay(t *testing.T) {
+	for _, model := range []string{"yandexplum", "plum"} {
+		p, ok := profileFor(model)
+		if !ok || !p.ui || p.leds != 3 || p.pcm != "plug:dmix_spk" || p.receiverABI != "armhf" || !p.quasarCoexist || p.airplayModel != "AudioAccessory5,1" {
+			t.Fatalf("%s contract: %+v", model, p)
+		}
+		conf := receiverConfig(p)
+		for _, s := range []string{"spk_tee", "port = 5000", "output_rate = 48000", "AudioAccessory5,1", metadataFIFO, "Yandex Station Light 2 AirPlay"} {
+			if !strings.Contains(conf, s) {
+				t.Fatalf("%s config lost %q", model, s)
+			}
+		}
+		if strings.Contains(conf, "hw:0,0") || strings.Contains(conf, "plug:dmix_spk") {
+			t.Fatal("shared mixer must stay in the private asoundrc, not the receiver device string")
+		}
+		asound := uiAsound(p.pcm, audioFIFO)
+		if !strings.Contains(asound, "plug:dmix_spk") || strings.Contains(asound, "hw:0,0") {
+			t.Fatalf("tee slave: %s", asound)
+		}
+	}
+}
+
 func TestChildrenCannotInheritYAMTokenOrPlumLibraries(t *testing.T) {
 	env := audioEnv([]string{"PATH=/bin", "YAM_API_TOKEN=private", "YAM_API_URL=http://localhost", "LD_LIBRARY_PATH=/plum/lib", "HOME=/plum", "DBUS_SYSTEM_BUS_ADDRESS=unix:path=/system"}, "/run/station-airplay", "/private/bus")
 	joined := strings.Join(env, "\n")
@@ -89,7 +111,7 @@ func TestChildrenCannotInheritYAMTokenOrPlumLibraries(t *testing.T) {
 }
 
 func TestStockMDNSHostname(t *testing.T) {
-	for model, want := range map[string]string{"yandexstation_2": "yandex-station-gen2-TEST123", "yandexmini_3_pro": "Yandex-Station-Mini-3-Pro-TEST123", "yandexmicro": "yandexmicro-TEST123"} {
+	for model, want := range map[string]string{"yandexplum": "YandexLite-gen2-TEST123", "yandexstation_2": "yandex-station-gen2-TEST123", "yandexmini_3_pro": "Yandex-Station-Mini-3-Pro-TEST123", "yandexmicro": "yandexmicro-TEST123"} {
 		p, _ := profileFor(model)
 		got, err := stockHostname(p.mdnsHostPrefix, "root=ubi androidboot.serialno=TEST123 quiet")
 		if err != nil || got != want {
