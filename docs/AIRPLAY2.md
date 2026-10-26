@@ -2,7 +2,7 @@
 
 All models use upstream Shairport Sync **5.6.2**, FFmpeg **7.1.3** and one NQPTP
 **1.2.9/smi11**. There is one source engine, compiled for the two native audio
-ABIs: ARMhf for Light2/Midi/Station2 and AArch64 for Mini3Pro.
+ABIs: ARMhf for Light2/Lite/Midi/Station2 and AArch64 for Mini3Pro.
 
 One packed static ARMv7 supervisor, one original Avahi0.7 daemon, one private
 ARMhf libc and one small namespace helper replace the parallel runtimes.
@@ -11,7 +11,7 @@ ARMhf uses minimal static Mbed TLS crypto; no OpenSSL library is shipped.
 D-Bus is rebuilt without systemd, removing its unrelated dependency chain.
 No firmware library is redistributed and no receiver is downloaded at runtime.
 
-Station2/Mini3Pro retain direct shared ALSA **48kHz/S16_LE stereo** and Alice.
+Station2/Mini3Pro/Lite retain direct shared ALSA **48kHz/S16_LE stereo** and Alice.
 A single ARMhf receiver with external aplay was rejected for these profiles:
 it would remove native ALSA latency feedback and weaken multiroom synchronization.
 Midi retains the upstream FIFO/aplay path and renderer; Light2 retains its PCM/UI.
@@ -21,7 +21,7 @@ and keeps YAM tokens private. Private D-Bus/mount namespace preserve global syst
 accounts and configuration. Build and package: [BUILD.md](../source/BUILD.md).
 One deterministic `.yap`, one YAM ID; no model-specific archive generator.
 
-Station2/Midi advertise HomePod; Mini3Pro/Light2 advertise HomePod mini through
+Station2/Midi advertise HomePod; Mini3Pro/Light2/Lite advertise HomePod mini through
 `general.model`, consistently in Bonjour and `/info`. No HomePod/Siri feature
 capabilities are added. [CONTRIBUTE.md](../CONTRIBUTE.md) documents profile/icon rules.
 
