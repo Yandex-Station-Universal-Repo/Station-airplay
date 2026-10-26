@@ -4,6 +4,7 @@
 |---|---|---|---|
 | `yandexstation_2` | ARMhf | `plug:dmix_spk` | HomePod |
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
+| `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
 
 Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
 `0.369.1.50.4795647264.20261021.107`; YAM 0.1.13. Both kernels execute the single
@@ -37,6 +38,15 @@ One event-channel RTSP 400 was received from iPhone before a successful retry.
 The sender is jailbroken with tweaks; its contribution has not been isolated.
 No measured cause or fix is claimed. Lossless/surround input, 24-bit DAC output,
 Plum hardware and a full reboot after the latest package are unverified.
+
+Lite (`yandexmicro`), firmware `0.369.1.46.4778262442.20261013.297`, YAM latest
+release (2026-10): 1.4.1 runs the static ARMv7 supervisor on the AArch64 kernel,
+uses the ARMhf receiver with firmware ALSA preloaded on `plug:dmix_spk`, publishes
+via the stock `yandexmicro-<serial>` host. Owner confirmed audible iPhone playback
+with Alice still running. The YAM installer adds no boot hook on Lite; with an
+owner-added `/etc/init.d/S99zyamd` (start-stop-daemon, same command as the
+installer) yamd and the plugin came back after two reboots. Long-run stability and
+multiroom are unverified.
 
 See [AIRPLAY2.md](AIRPLAY2.md) for protocol checks and
 [CONTRIBUTE.md](../CONTRIBUTE.md) for extension/icon rules.

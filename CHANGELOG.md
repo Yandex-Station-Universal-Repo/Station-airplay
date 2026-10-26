@@ -1,3 +1,7 @@
+## 1.4.1
+
+- Яндекс Станция Лайт (`yandexmicro`): shared-профиль по образцу Станции 2 — ARMhf receiver 5.6.2, общий `plug:dmix_spk` 48 кГц/S16_LE с прелоадом штатной ALSA, Алиса сохраняется, mDNS-хост `yandexmicro-<serial>`, иконка HomePod mini. Часы/RGB не управляются.
+
 ## 1.3.2
 
 - One static ARMv7 supervisor for all supported kernels; remove duplicate AArch64 supervisor and obsolete AirPlay 1 receiver payloads.

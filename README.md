@@ -26,6 +26,7 @@
 | Миди (`yandexmidi`) | Backend из принятого upstream PR#1 | Часы Midi, 24 RGB | Проверка upstream на .46; [MIDI.md](docs/MIDI.md) |
 | Станция 2 (`yandexstation_2`) | 5.6.2 / ARMhf, общий `plug:dmix_spk` | Не управляет | .50, Алиса сохраняется |
 | Мини 3 Про (`yandexmini_3_pro`) | 5.6.2 / AArch64, общий `speakers` | Не управляет | .50, Алиса сохраняется |
+| Лайт (`yandexmicro`) | 5.6.2 / ARMhf, общий `plug:dmix_spk` | Не управляет | .46, Алиса сохраняется; [SHARED_MODELS.md](docs/SHARED_MODELS.md) |
 
 Один статический ARMv7 supervisor выбирает профиль по точному YAM model ID.
 Clock/RGB обязательны только в исходных Plum/Midi-профилях; остальные модели
@@ -62,7 +63,7 @@ cd ..
 ./scripts/package.sh
 ```
 
-Архив будет создан в `dist/station-airplay-1.4.0.yap`. Перед публикацией проверьте зависимости и происхождение бинарников: [THIRD_PARTY.md](docs/THIRD_PARTY.md).
+Архив будет создан в `dist/station-airplay-1.4.1.yap`. Перед публикацией проверьте зависимости и происхождение бинарников: [THIRD_PARTY.md](docs/THIRD_PARTY.md).
 
 ## Структура репозитория
 

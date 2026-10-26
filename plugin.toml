@@ -1,8 +1,8 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "1.4.0"
+version = "1.4.1"
 entry = "bin/station-airplay"
-description = "AirPlay 2 receiver: Light 2, Midi, Station 2 and Mini 3 Pro; shared audio with Alice on Station 2/Mini 3 Pro."
+description = "AirPlay 2 receiver: Light 2, Lite, Midi, Station 2 and Mini 3 Pro; shared audio with Alice on Lite/Station 2/Mini 3 Pro."
 permissions = ["exec", "clock", "led"]
 
 [launch]
@@ -11,5 +11,5 @@ mode = "service"
 path = "bin/station-airplay"
 
 [compatibility]
-models = ["yandexplum", "plum", "yandexstation_2", "yandexmini_3_pro", "yandexmidi"]
+models = ["yandexplum", "plum", "yandexstation_2", "yandexmini_3_pro", "yandexmidi", "yandexmicro"]
 features = []
