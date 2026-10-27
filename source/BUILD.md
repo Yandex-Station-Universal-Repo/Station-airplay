@@ -31,7 +31,8 @@ scripts/build-airplay2.sh armhf
 scripts/build-airplay2.sh arm64
 ```
 
-`build-runtime.sh` builds D-Bus1.16.2 without systemd/X11 and static Mbed TLS3.6.7
+`build-runtime.sh` builds D-Bus1.16.2 (`libdbus-1`, plus `dbus-daemon`/`dbus-send` for
+firmwares without D-Bus, the Mini) without systemd/X11 and static Mbed TLS3.6.7
 crypto with `support/mbedtls-config.h`. Shairport uses RSA/AES/MD5/SHA, while
 pairing/AEAD remain in libsodium. The Mbed patch fixes an unconditional OpenSSL
 MD5 call in AirPlay2 identity generation and removes unused TLS/X509 link probes.

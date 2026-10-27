@@ -80,6 +80,7 @@ resampling: рабочие 44,1 кГц старого receiver не доказы
 | Станция 2 | `yandexstation_2` | HomePod | `AudioAccessory1,1` |
 | Мини 3 Про | `yandexmini_3_pro` | HomePod mini | `AudioAccessory5,1` |
 | Лайт | `yandexmicro` | HomePod mini | `AudioAccessory5,1` |
+| Мини | `yandexmini`, `YandexStationMini` | HomePod mini | `AudioAccessory5,1` |
 | Лайт 2 | `yandexplum`, `plum` | HomePod mini | `AudioAccessory5,1` |
 | Миди (upstream PR#1) | `yandexmidi` | HomePod | `AudioAccessory1,1` |
 

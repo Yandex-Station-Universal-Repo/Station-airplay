@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,6 +71,24 @@ func TestRejectNonLoopbackAPI(t *testing.T) {
 	if _, e := newYAMAPI(); e == nil {
 		t.Fatal("accepted non-local YAM token target")
 	}
+}
+func TestAcceptOwnInterfaceAPI(t *testing.T) {
+	// BetterYAM passes its LAN listen address; that is still this host.
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Skip(err)
+	}
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil {
+			t.Setenv("YAM_API_TOKEN", "secret")
+			t.Setenv("YAM_API_URL", "http://"+n.IP.String()+":8099/api/runtime/test")
+			if _, e := newYAMAPI(); e != nil {
+				t.Fatalf("rejected own address %s: %v", n.IP, e)
+			}
+			return
+		}
+	}
+	t.Skip("no non-loopback IPv4 interface")
 }
 func TestMetadataAndAnimations(t *testing.T) {
 	s := &airplayState{status: "stopped"}

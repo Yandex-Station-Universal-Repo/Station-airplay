@@ -20,3 +20,9 @@ Firmware libraries are private link inputs, never redistributed.
 Original Avahi0.7 and selected legacy ARMhf libraries are reused, not duplicated;
 their pre-existing rebuild-provenance limitations remain in [THIRD_PARTY.md](../docs/THIRD_PARTY.md).
 UPX5.2.1 packs only the static Go supervisor; no UPX runtime/tool is bundled.
+
+`bin/dbus-daemon` and `bin/dbus-send` (Mini, 1.4.3) are D-Bus1.16.2 from the pinned
+archive with the `build-runtime.sh` options, cross-compiled by zig cc0.16 for
+`arm-linux-gnueabihf` (glibc symbols <=2.34, no RUNPATH, `-ffile-prefix-map`).
+They load the packaged `libdbus-1`/`libexpat`/libc. `build-runtime.sh` rebuilds
+them with the GCC sysroot.
