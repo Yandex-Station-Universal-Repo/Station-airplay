@@ -197,6 +197,7 @@ var (
 	profiles          = []stationProfile{plumProfile, midiProfile, mini2Profile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
+		{name: "Yandex Mini 3 AirPlay", models: []string{"bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		// Mini (Amlogic AXG, Linkplay firmware): ARMhf userspace on an AArch64
 		// kernel. Quasar's default is plug -> softvol "Master" -> dmix "dmixer"

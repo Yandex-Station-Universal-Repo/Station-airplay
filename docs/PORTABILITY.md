@@ -30,7 +30,7 @@
 
 ## Профили 1.3.0
 
-`source/profiles.go` выбирает точную модель YAM. Для Станции 2 и Мини 3 Про используются отдельные ABI receiver и проверенные shared ALSA PCM; clock/RGB не требуются и не вызываются. Запуск, stop, enable/disable и логи принадлежат YAM. Прежняя Plum-ветка сохранена; ограничения выше описывают её AirPlay2 renderer. [Миграция и проверки](SHARED_MODELS.md), [инструкция для новых вкладов](../CONTRIBUTE.md).
+`source/profiles.go` выбирает точную модель YAM. Для Станции 2, Мини 3 (`bergamot`, ARMhf, `speakers`) и Мини 3 Про используются отдельные ABI receiver и проверенные shared ALSA PCM; clock/RGB не требуются и не вызываются. Запуск, stop, enable/disable и логи принадлежат YAM. Прежняя Plum-ветка сохранена; ограничения выше описывают её AirPlay2 renderer. [Миграция и проверки](SHARED_MODELS.md), [инструкция для новых вкладов](../CONTRIBUTE.md).
 
 Оба shared-профиля используют AirPlay 2 (Shairport 5.6.2 / NQPTP 1.2.9),
 48 кГц/S16_LE и объявление HomePod. [ABI, сборка и границы возможностей](AIRPLAY2.md).
