@@ -67,6 +67,9 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 }
 
 func run(ctx context.Context, sharedAudio bool) error {
+	return runWithControls(ctx, sharedAudio, nil)
+}
+func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsConfig) error {
 	api, err := newYAMAPI()
 	if err != nil {
 		return err
@@ -84,6 +87,9 @@ func run(ctx context.Context, sharedAudio bool) error {
 	if !ok {
 		return fmt.Errorf("unsupported YAM model %q", d.Model)
 	}
+	if err = validateControlRenderer(p, controls); err != nil {
+		return err
+	}
 	if p.pcm == "" {
 		return runPlum(ctx)
 	}
@@ -91,15 +97,41 @@ func run(ctx context.Context, sharedAudio bool) error {
 	if err != nil {
 		return err
 	}
+	if controls != nil {
+		if err = controlsPreflight(ctx, api, d, *controls); err != nil {
+			return err
+		}
+	}
 	if d.Architecture != "aarch64" {
 		return errors.New("shared profiles require an AArch64 kernel")
 	}
-	return runShared(ctx, p)
+	return runSharedControls(ctx, p, api, d, controls)
+}
+
+// A renderer must have only one UI owner. Controls keep their explicit
+// Light 2 audio-only profile; upstream display mode remains available without them.
+func validateControlRenderer(p stationProfile, controls *controlsConfig) error {
+	if controls == nil {
+		return nil
+	}
+	if p.ui {
+		return errors.New("shared controls on clock-equipped Light 2 require --shared-audio; upstream display mode cannot own the same UI")
+	}
+	if p.pcm == "" {
+		return errors.New("shared controls are not enabled for legacy Plum/Midi renderer")
+	}
+	if p.receiverABI == "aarch64" {
+		return errors.New("shared controls require the control-enabled ARMhf receiver; AArch64 control build is not qualified")
+	}
+	if p.packagedDBus {
+		return errors.New("shared controls for the original Mini packaged D-Bus profile are not qualified; audio-only upstream mode remains available")
+	}
+	return nil
 }
 
 // Clock capability alone does not say whether shared audio is wanted or usable.
 // Explicit opt-in also supports Plum firmware advertising a segment clock.
-// Without opt-in, retain the original clock-equipped Plum renderer.
+// Without opt-in, retain upstream 1.4.2 clock-equipped Light 2 display mode.
 func profileForDevice(d yamDevice, sharedAudio bool) (stationProfile, bool) {
 	p, ok := profileFor(d.Model)
 	if ok && (d.Model == "plum" || d.Model == "yandexplum") && (sharedAudio || !feature(d, "display.clock.segment.v1")) {
@@ -155,6 +187,26 @@ pcm.spk_tee {
  slave.pcm "spk_file"
 }
 `, pcm, fifo)
+}
+
+func receiverControlConfig(p stationProfile, controls *controlsConfig) string {
+	config := receiverConfig(p)
+	if controls == nil {
+		return config
+	}
+	// Shairport's internal metadata hub also carries DACP credentials/client state.
+	// Disabling metadata disables remote-control discovery even with D-Bus built.
+	// Keep its unused FIFO private and volatile; never request artwork/cache files.
+	config = strings.Replace(config, `metadata = { enabled = "no"; };`,
+		`metadata = { enabled = "yes"; include_cover_art = "no"; pipe_name = "/run/station-airplay/control-metadata"; cover_art_cache_directory = "/run/station-airplay/coverart"; };`, 1)
+	// The default ten-second active tail keeps the playback indication lit after
+	// AirPlay has gone. A short tail still absorbs jitter without lingering.
+	config = strings.Replace(config, `sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 60; };`,
+		`sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 60; active_state_timeout = 1.0; };`, 1)
+	if controls.NativeVolume {
+		config = strings.Replace(config, " volume_range_db = 50;", " volume_range_db = 50;\n ignore_volume_control = \"yes\";", 1)
+	}
+	return config
 }
 
 func audioEnv(environ []string, home, bus string) []string {
@@ -249,8 +301,11 @@ func (e *childFailure) Error() string {
 }
 
 func runShared(ctx context.Context, p stationProfile) error {
+	return runSharedControls(ctx, p, nil, yamDevice{}, nil)
+}
+func runSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d yamDevice, controls *controlsConfig) error {
 	for attempts := 0; ; attempts++ {
-		err := serveShared(ctx, p)
+		err := serveSharedControls(ctx, p, api, d, controls)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -268,6 +323,14 @@ func runShared(ctx context.Context, p stationProfile) error {
 }
 
 func serveShared(ctx context.Context, p stationProfile) error {
+	return serveSharedControls(ctx, p, nil, yamDevice{}, nil)
+}
+func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d yamDevice, controls *controlsConfig) error {
+	if err := validateControlRenderer(p, controls); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -291,7 +354,6 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	if err = preflight(p); err != nil {
 		return err
 	}
-	var api *yamAPI
 	var metaFD, audioFD int
 	if p.ui {
 		if api, err = newYAMAPI(); err != nil {
@@ -320,7 +382,8 @@ func serveShared(ctx context.Context, p stationProfile) error {
 		socket.Close()
 	}
 	conf := filepath.Join(state, "shairport.conf")
-	if err = os.WriteFile(conf, []byte(receiverConfig(p)), 0600); err != nil {
+	config := receiverControlConfig(p, controls)
+	if err = os.WriteFile(conf, []byte(config), 0600); err != nil {
 		return err
 	}
 	bus := filepath.Join(state, "private-bus")
@@ -350,7 +413,16 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	}
 	env := audioEnv(os.Environ(), state, bus)
 	children := []*child{}
-	defer func() { stopChildren(children) }()
+	controlDone := make(chan struct{})
+	controlErrors := make(chan error, 1)
+	controlsStarted := false
+	defer func() {
+		cancel()
+		if controlsStarted {
+			<-controlDone
+		}
+		stopChildren(children)
+	}()
 	exits := make(chan exitInfo, 4)
 	launch := func(name, bin string, args ...string) error {
 		file, e := os.OpenFile(filepath.Join(state, name+".log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
@@ -452,9 +524,36 @@ func serveShared(ctx context.Context, p stationProfile) error {
 		return renderDisplay(ctx, api, metaFD, audioFD, exits)
 	}
 	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.models[0], p.pcm)
+	if controls != nil {
+		if err = ready("receiver controls D-Bus API", func(parent context.Context) error {
+			r, e := openReceiver(bus)
+			if e != nil {
+				return fmt.Errorf("open receiver: %w", e)
+			}
+			defer r.conn.Close()
+			check, done := context.WithTimeout(parent, 3*time.Second)
+			defer done()
+			_, e = r.State(check)
+			if e == nil && controls.Ducking {
+				e = r.Gain(check, 100, 0)
+			}
+			return e
+		}); err != nil {
+			return fmt.Errorf("shared controls need receiver D-Bus support: %w", err)
+		}
+		controlsStarted = true
+		go func() {
+			defer close(controlDone)
+			if e := serveControls(ctx, bus, api, d, *controls); e != nil {
+				controlErrors <- e
+			}
+		}()
+	}
 	select {
 	case <-ctx.Done():
 		return nil
+	case e := <-controlErrors:
+		return fmt.Errorf("shared controls stopped: %w", e)
 	case ex := <-exits:
 		return &childFailure{ex.name, ex.err}
 	}

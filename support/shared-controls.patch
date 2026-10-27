@@ -1,0 +1,111 @@
+--- a/player.c
++++ b/player.c
+@@ -1889,9 +1889,31 @@
+   return sp >> 32;
+ }
+ 
++#include "stream-gain.h"
++#include <stdatomic.h>
++static pthread_mutex_t stream_gain_mutex = PTHREAD_MUTEX_INITIALIZER;
++static stream_gain_lease stream_gain = {100, 0};
++static atomic_int stream_gain_effective = ATOMIC_VAR_INIT(65536);
++static uint64_t stream_gain_now(void) {
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
++}
++int station_set_stream_gain(unsigned percent, unsigned lease_ms) {
++  pthread_mutex_lock(&stream_gain_mutex);
++  int result = stream_gain_update(&stream_gain, percent, lease_ms, stream_gain_now());
++  pthread_mutex_unlock(&stream_gain_mutex);
++  return result;
++}
++static void station_refresh_stream_gain(void) {
++  pthread_mutex_lock(&stream_gain_mutex);
++  atomic_store_explicit(&stream_gain_effective, stream_gain_fixed(&stream_gain, stream_gain_now()), memory_order_relaxed);
++  pthread_mutex_unlock(&stream_gain_mutex);
++}
++
+ static inline void process_sample(int32_t sample, char **outp, sps_format_t format, int volume,
+                                   int dither, rtsp_conn_info *conn) {
+-  int64_t hyper_sample = sample;
++  int64_t hyper_sample = ((int64_t)sample * atomic_load_explicit(&stream_gain_effective, memory_order_relaxed)) / 65536;
+   int result = 0;
+ 
+   if (conn->do_loudness != 0) {
+@@ -3849,7 +3871,9 @@
+ 
+     // if we are using the software attenuator or downsampling or mixing to mono, enable dithering
+ 
+-    if ((conn->fix_volume != 0x10000) || // if not 0x10000, it is attenuating...
++    station_refresh_stream_gain();
++    if ((atomic_load_explicit(&stream_gain_effective, memory_order_relaxed) != 65536) ||
++        (conn->fix_volume != 0x10000) || // if not 0x10000, it is attenuating...
+         ((conn->output_bit_depth > 0) &&
+          (conn->input_effective_bit_depth > conn->output_bit_depth)) ||
+         (config.playback_mode == ST_mono)) {
+--- a/dbus/dbus-service.c
++++ b/dbus/dbus-service.c
+@@ -57,6 +57,19 @@
+ #endif
+ 
+ ShairportSync *shairportSyncSkeleton;
++
++extern int station_set_stream_gain(unsigned percent, unsigned lease_ms);
++static gboolean on_handle_set_stream_gain(ShairportSync *skeleton,
++    GDBusMethodInvocation *invocation, guint percent, guint lease_ms,
++    __attribute__((unused)) gpointer user_data) {
++  if (!station_set_stream_gain(percent, lease_ms)) {
++    g_dbus_method_invocation_return_dbus_error(invocation,
++        "org.gnome.ShairportSync.InvalidGain", "invalid gain or lease");
++    return TRUE;
++  }
++  shairport_sync_complete_set_stream_gain(skeleton, invocation);
++  return TRUE;
++}
+ 
+ static GBusType dbus_bus_type = G_BUS_TYPE_SYSTEM; // default is the dbus system message bus
+ int service_is_running = 0;
+@@ -1136,6 +1149,8 @@
+   //                  NULL);
+ 
+   g_signal_connect(shairportSyncSkeleton, "handle-quit", G_CALLBACK(on_handle_quit), NULL);
++  g_signal_connect(shairportSyncSkeleton, "handle-set-stream-gain",
++                   G_CALLBACK(on_handle_set_stream_gain), NULL);
+ 
+   g_signal_connect(shairportSyncSkeleton, "handle-remote-command",
+                    G_CALLBACK(on_handle_remote_command), NULL);
+--- a/dbus/org.gnome.ShairportSync.xml
++++ b/dbus/org.gnome.ShairportSync.xml
+@@ -2,6 +2,10 @@
+ <node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+   <interface name="org.gnome.ShairportSync">
+     <method name="Quit"/>
++    <method name="SetStreamGain">
++      <arg name="percent" type="u" direction="in" />
++      <arg name="lease_ms" type="u" direction="in" />
++    </method>
+     <property name='Active' type='b' access='read'/>
+     <property name="DisableStandbyMode" type="s" access="readwrite" />
+     <property name="LoudnessEnabled" type="b" access="readwrite" />
+--- /dev/null
++++ b/stream-gain.h
+@@ -0,0 +1,18 @@
++/* GPL-3.0-or-later. Stream-only attenuation lease; never changes mixer/phone.
++ * Header-only policy is also compiled by the isolated C unit test. */
++#ifndef STATION_STREAM_GAIN_H
++#define STATION_STREAM_GAIN_H
++#include <stdint.h>
++typedef struct { unsigned percent; uint64_t expires_ms; } stream_gain_lease;
++static inline int stream_gain_update(stream_gain_lease *s, unsigned percent,
++                                     unsigned lease_ms, uint64_t now_ms) {
++  if (percent > 100 || lease_ms > 5000 || (percent < 100 && lease_ms == 0)) return 0;
++  s->percent = percent;
++  s->expires_ms = percent == 100 ? 0 : now_ms + lease_ms;
++  return 1;
++}
++static inline int stream_gain_fixed(stream_gain_lease *s, uint64_t now_ms) {
++  if (s->expires_ms == 0 || now_ms >= s->expires_ms) return 65536;
++  return (int)((uint64_t)s->percent * 65536 / 100);
++}
++#endif
