@@ -4,15 +4,17 @@
 |---|---|---|---|
 | `yandexstation_2` | ARMhf | `plug:dmix_spk` | HomePod |
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
+| `bergamot` (Мини 3) | ARMhf | `speakers` | HomePod mini |
 | `yandexplum`, `plum` (Лайт 2) | ARMhf | `plug:dmix_spk` | HomePod mini |
 | `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
 | `yandexmini`, `YandexStationMini` (Мини) | ARMhf | `softvol` | HomePod mini |
 
 Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
-`0.369.1.50.4795647264.20261021.107`; YAM 0.1.13. Both kernels execute the single
+`0.369.1.50.4795647264.20261021.107`, Mini 3 `0.369.1.50.4794652521.20261021.117`.
+Station 2 and Mini 3 Pro were checked with YAM 0.1.13. Those kernels execute the single
 static ARMv7 supervisor. Audio uses 48 kHz/S16 stereo and retains Alice.
 Both mixers reject 44.1 kHz when resampling is disabled in the new receiver.
-Station 2, Mini 3 Pro and Lite do not touch clock or RGB. Light 2 plays through the same shared mixer and, while the service is running, YAM holds its segment clock and 3 LEDs. The hostname maind already publishes is `YandexLite-gen2-<device id>`.
+Station 2, Mini 3, Mini 3 Pro and Lite do not touch clock or RGB. Light 2 plays through the same shared mixer and, while the service is running, YAM holds its segment clock and 3 LEDs. The hostname maind already publishes is `YandexLite-gen2-<device id>`.
 
 ## Install / rollback
 
@@ -83,6 +85,15 @@ full reboot with the stock BetterYAM init script, the plugin and Alice came back
 without intervention.
 Long-run stability, multiroom and simultaneous playback with other stations are
 unverified.
+
+Mini 3 (`bergamot`, firmware `0.369.1.50.4794652521.20261021.117`): the ARMhf
+receiver plays on the shared `speakers` mixer with firmware ALSA from
+`/usr/lib/libasound.so.2`. maind publishes `YandexMini3-<serial>`. Clock and RGB
+stay with Alice. Current yamd reports `unknown` for `yandex,bergamot` and rewrites
+an id containing `yandexmini`, including `yandexmini_3`, to the first-generation
+Mini `yandexmini`. The stable id is `bergamot` in `device.toml`. Owner confirmed
+iPhone AirPlay 2 playback, the phone volume slider, and Alice answering while the
+stream plays.
 
 See [AIRPLAY2.md](AIRPLAY2.md) for protocol checks and
 [CONTRIBUTE.md](../CONTRIBUTE.md) for extension/icon rules.

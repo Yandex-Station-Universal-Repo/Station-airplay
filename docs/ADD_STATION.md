@@ -33,6 +33,7 @@ Shared profiles require `yam device` `architecture` `aarch64`. That is the kerne
 | `yandexmicro` | `plug:dmix_spk` | `armhf` | `yandexmicro` | false | `AudioAccessory5,1` |
 | `yandexmini`, `YandexStationMini` | `softvol` | `armhf` | `yandexmini` | false | `AudioAccessory5,1` |
 | `yandexmini_3_pro` | `speakers` | `aarch64` | `Yandex-Station-Mini-3-Pro` | false | `AudioAccessory5,1` |
+| `bergamot` | `speakers` | `armhf` | `YandexMini3` | false | `AudioAccessory5,1` |
 | `yandexplum`, `plum` | `plug:dmix_spk` | `armhf` | `YandexLite-gen2` | true | `AudioAccessory5,1` |
 | `yandexmidi` | empty | | `yandex-station-midi` | `pipeOutput` | `AudioAccessory1,1` |
 
