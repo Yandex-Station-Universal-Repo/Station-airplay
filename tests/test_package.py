@@ -8,7 +8,7 @@ with tarfile.open(root/'dist'/f'station-airplay-{version}.yap') as archive:
     assert sum(m.size for m in members.values()) < 10*1024*1024
     manifest = tomllib.loads(archive.extractfile('plugin.toml').read().decode())
     assert manifest['id'] == 'station-airplay'
-    assert set(manifest['compatibility']['models']) == {'plum', 'yandexplum', 'yandexmidi', 'yandexstation_2', 'yandexmini_3_pro', 'bergamot', 'yandexmicro', 'yandexmini', 'YandexStationMini'}
+    assert set(manifest['compatibility']['models']) == {'plum', 'yandexplum', 'yandexmidi', 'yandexmini_2', 'yandexstation_2', 'yandexmini_3_pro', 'bergamot', 'yandexmicro', 'yandexmini', 'YandexStationMini'}
     engines = {'bin/shairport-sync-ap2': 40, 'bin/shairport-sync-ap2-aarch64': 183}
     assert {n for n in members if '/shairport-sync' in n} == set(engines)
     for name, machine in engines.items():
