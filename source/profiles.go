@@ -525,19 +525,19 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 	}
 	fmt.Printf("%s model=%s protocol=AirPlay2 pcm=%s Alice=shared UI=off\n", version, p.models[0], p.pcm)
 	if controls != nil {
-		if err = ready(func() bool {
+		if err = ready("receiver controls D-Bus API", func(parent context.Context) error {
 			r, e := openReceiver(bus)
 			if e != nil {
-				return false
+				return fmt.Errorf("open receiver: %w", e)
 			}
 			defer r.conn.Close()
-			check, done := context.WithTimeout(ctx, time.Second)
+			check, done := context.WithTimeout(parent, 3*time.Second)
 			defer done()
 			_, e = r.State(check)
 			if e == nil && controls.Ducking {
 				e = r.Gain(check, 100, 0)
 			}
-			return e == nil
+			return e
 		}); err != nil {
 			return fmt.Errorf("shared controls need receiver D-Bus support: %w", err)
 		}
