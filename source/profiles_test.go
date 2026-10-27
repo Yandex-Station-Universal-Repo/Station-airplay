@@ -47,6 +47,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 	for _, tc := range []struct{ model, pcm, abi, icon string }{
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
+		{"bergamot", "speakers", "armhf", "AudioAccessory5,1"},
 		{"yandexmicro", "plug:dmix_spk", "armhf", "AudioAccessory5,1"},
 		{"yandexmini", "softvol", "armhf", "AudioAccessory5,1"},
 		{"YandexStationMini", "softvol", "armhf", "AudioAccessory5,1"},
@@ -113,7 +114,7 @@ func TestChildrenCannotInheritYAMTokenOrPlumLibraries(t *testing.T) {
 }
 
 func TestStockMDNSHostname(t *testing.T) {
-	for model, want := range map[string]string{"yandexplum": "YandexLite-gen2-TEST123", "yandexstation_2": "yandex-station-gen2-TEST123", "yandexmini_3_pro": "Yandex-Station-Mini-3-Pro-TEST123", "yandexmicro": "yandexmicro-TEST123"} {
+	for model, want := range map[string]string{"yandexplum": "YandexLite-gen2-TEST123", "yandexstation_2": "yandex-station-gen2-TEST123", "yandexmini_3_pro": "Yandex-Station-Mini-3-Pro-TEST123", "bergamot": "YandexMini3-TEST123", "yandexmicro": "yandexmicro-TEST123"} {
 		p, _ := profileFor(model)
 		got, err := stockHostname(p.mdnsHostPrefix, "root=ubi androidboot.serialno=TEST123 quiet")
 		if err != nil || got != want {

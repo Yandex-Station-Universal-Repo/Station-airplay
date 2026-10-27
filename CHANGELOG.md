@@ -1,3 +1,7 @@
+## 1.4.4
+
+- Яндекс Станция Мини 3 (`bergamot`): shared-профиль, ARMhf receiver 5.6.2, общий PCM `speakers` 48 кГц/S16_LE, Алиса сохраняется, mDNS-хост `YandexMini3-<serial>`, иконка HomePod mini. Часы и RGB не занимаются. YAM не узнаёт `yandex,bergamot` и схлопывает `yandexmini_3` в модель Мини первого поколения `yandexmini`, поэтому стабильный id задаётся в `device.toml` как `bergamot`.
+
 ## 1.4.3
 
 - Station Mini (`yandexmini`; BetterYAM also reports `YandexStationMini`): shared profile with the ARMhf receiver and the firmware ALSA from `/system/vendor/quasar/libs` preloaded. It plays on `softvol` (firmware `Master` -> dmix `dmixer`, 48 kHz S16_LE), so the station volume and the sender slider both apply. Alice stays up; clock and RGB are not used.
