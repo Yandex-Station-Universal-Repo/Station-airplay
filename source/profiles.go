@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -164,15 +165,63 @@ func stockHostname(prefix, cmdline string) (string, error) {
 			serial = strings.TrimPrefix(field, "androidboot.serialno=")
 		}
 	}
-	if serial == "" || len(serial) > 32 {
-		return "", errors.New("missing/invalid boot serial for stock mDNS hostname")
+	return joinHostID(prefix, serial)
+}
+
+// Linkplay factory settings (JSON). The Mini's maind publishes its mv_uuid.
+const linkplayNvram = "/vendor/new_nvram_config"
+
+func nvramHostname(prefix string, raw []byte) (string, error) {
+	var nv struct {
+		UUID string `json:"mv_uuid"`
 	}
-	for _, c := range serial {
+	if err := json.Unmarshal(raw, &nv); err != nil {
+		return "", fmt.Errorf("Linkplay nvram: %w", err)
+	}
+	return joinHostID(prefix, nv.UUID)
+}
+
+func joinHostID(prefix, id string) (string, error) {
+	if id == "" || len(id) > 32 {
+		return "", errors.New("missing/invalid device id for stock mDNS hostname")
+	}
+	for _, c := range id {
 		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-			return "", errors.New("invalid boot serial")
+			return "", errors.New("invalid device id")
 		}
 	}
-	return prefix + "-" + serial, nil
+	return prefix + "-" + id, nil
+}
+
+func stockHost(p stationProfile) (string, error) {
+	if p.nvramHostID {
+		b, e := os.ReadFile(linkplayNvram)
+		if e != nil {
+			return "", e
+		}
+		return nvramHostname(p.mdnsHostPrefix, b)
+	}
+	b, e := os.ReadFile("/proc/cmdline")
+	if e != nil {
+		return "", e
+	}
+	return stockHostname(p.mdnsHostPrefix, string(b))
+}
+
+// dbusCommand returns the loader and leading arguments for a D-Bus tool:
+// firmware /usr/bin, or the packaged ARMhf build behind the packaged loader.
+func dbusCommand(root string, p stationProfile, tool string) (string, []string) {
+	if !p.packagedDBus {
+		return "/usr/bin/" + tool, nil
+	}
+	return filepath.Join(root, "lib/ld-linux-armhf.so.3"), []string{"--library-path", filepath.Join(root, "lib"), filepath.Join(root, "bin", tool)}
+}
+
+func firmwareALSA(p stationProfile) string {
+	if p.alsaLib != "" {
+		return p.alsaLib
+	}
+	return "/usr/lib/libasound.so.2"
 }
 
 type childFailure struct {
@@ -308,7 +357,8 @@ func serveShared(ctx context.Context, p stationProfile) error {
 		}()
 		return nil
 	}
-	if err = launch("dbus-daemon", "/usr/bin/dbus-daemon", "--config-file="+filepath.Join(state, "bus.conf"), "--nofork"); err != nil {
+	dbusBin, dbusArgs := dbusCommand(root, p, "dbus-daemon")
+	if err = launch("dbus-daemon", dbusBin, append(dbusArgs, "--config-file="+filepath.Join(state, "bus.conf"), "--nofork")...); err != nil {
 		return err
 	}
 	ready := func(check func() bool) error {
@@ -344,7 +394,8 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	if err = ready(func() bool {
 		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		c := exec.CommandContext(checkCtx, "/usr/bin/dbus-send", "--system", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.Avahi")
+		sendBin, sendArgs := dbusCommand(root, p, "dbus-send")
+		c := exec.CommandContext(checkCtx, sendBin, append(sendArgs, "--system", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.Avahi")...)
 		c.Env = env
 		b, e := c.Output()
 		return e == nil && strings.Contains(string(b), "boolean true")
@@ -360,7 +411,7 @@ func serveShared(ctx context.Context, p stationProfile) error {
 				loader, paths, binary = "/lib/ld-linux-aarch64.so.1", filepath.Join(libs, "aarch64")+":/usr/lib:/lib", binary+"-aarch64"
 			} else {
 				// Shared dmix must use the firmware ALSA ABI, not the legacy Light library.
-				preload = []string{"--preload", "/usr/lib/libasound.so.2"}
+				preload = []string{"--preload", firmwareALSA(p)}
 			}
 		}
 		argv := append([]string{"--library-path", paths}, preload...)

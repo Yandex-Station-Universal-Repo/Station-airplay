@@ -23,8 +23,10 @@ cmake -S "$w/dbus-1.16.2" -B "$w/dbus-build" \
  -DCMAKE_DISABLE_FIND_PACKAGE_X11=TRUE -DCMAKE_DISABLE_FIND_PACKAGE_GLIB2=TRUE \
  -DEXPAT_LIBRARY="$R/lib/libexpat.so.1" -DEXPAT_INCLUDE_DIR=/usr/include \
  -DDBUS_SESSION_SOCKET_DIR=/tmp -DENABLE_SYSTEMD=OFF -DDBUS_WITH_GLIB=OFF -DDBUS_BUILD_X11=OFF \
- -DDBUS_BUILD_TESTS=OFF -DDBUS_ENABLE_VERBOSE_MODE=OFF -DDBUS_ENABLE_XML_DOCS=OFF
-cmake --build "$w/dbus-build" --target dbus-1 -j4
-arm-linux-gnueabihf-strip "$w/dbus-build/lib/libdbus-1.so.3"
+ -DDBUS_BUILD_TESTS=OFF -DDBUS_ENABLE_VERBOSE_MODE=OFF -DDBUS_ENABLE_XML_DOCS=OFF -DCMAKE_SKIP_RPATH=ON
+cmake --build "$w/dbus-build" --target dbus-1 dbus-daemon dbus-send -j4
+arm-linux-gnueabihf-strip "$w/dbus-build/lib/libdbus-1.so.3" "$w/dbus-build/bin/dbus-daemon" "$w/dbus-build/bin/dbus-send"
 cp -L "$w/dbus-build/lib/libdbus-1.so.3" "$R/lib/libdbus-1.so.3"
+# Mini firmware has no D-Bus; the private bus runs these behind the packaged loader.
+cp "$w/dbus-build/bin/dbus-daemon" "$w/dbus-build/bin/dbus-send" "$R/bin/"
 arm-linux-gnueabihf-gcc --sysroot="$r" $flags -Wl,--gc-sections -s "$R/support/avahi-namespace.c" -o "$R/bin/avahi-namespace"

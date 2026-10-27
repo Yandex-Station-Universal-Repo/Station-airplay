@@ -11,6 +11,7 @@ root = pathlib.Path(__file__).resolve().parent.parent
 version = re.search(r'^version = "([^"]+)"', (root / 'plugin.toml').read_text(), re.M)[1]
 required = ['bin/station-airplay', 'bin/avahi-namespace', 'bin/shairport-sync-ap2',
             'bin/shairport-sync-ap2-aarch64', 'bin/nqptp', 'bin/avahi-daemon',
+            'bin/dbus-daemon', 'bin/dbus-send',
             'lib/ld-linux-armhf.so.3', 'lib/aarch64/libplist-2.0.so.3']
 for name in required:
     if not (root / name).is_file():

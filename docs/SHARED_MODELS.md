@@ -6,6 +6,7 @@
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
 | `yandexplum`, `plum` (Лайт 2) | ARMhf | `plug:dmix_spk` | HomePod mini |
 | `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
+| `yandexmini`, `YandexStationMini` (Мини) | ARMhf | `softvol` | HomePod mini |
 
 Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
 `0.369.1.50.4795647264.20261021.107`; YAM 0.1.13. Both kernels execute the single
@@ -48,6 +49,40 @@ with Alice still running. The YAM installer adds no boot hook on Lite; with an
 owner-added `/etc/init.d/S99zyamd` (start-stop-daemon, same command as the
 installer) yamd and the plugin came back after two reboots. Long-run stability and
 multiroom are unverified.
+
+Mini (`yandexmini`, Amlogic AXG, Linkplay-based firmware
+`1.305.4.16.3237824040.20250721`), BetterYAM 0.1.18: 1.4.3 runs the static ARMv7
+supervisor on the AArch64 4.9 kernel and the ARMhf receiver with the firmware
+ALSA from `/system/vendor/quasar/libs` preloaded. Quasar plays on `default` =
+plug -> softvol `Master` -> asym -> dmix `dmixer` (hw:0,0, 48 kHz S16_LE);
+`/etc/asound.conf` is stale and the live config comes from `/tmp/alsa/asoundrc`.
+The receiver opens `softvol` directly. Every `plug:` PCM fails in the receiver
+with `Unable to set hw parameters ... No such file or directory`: this alsa-lib
+inserts a libsamplerate converter even for 48 kHz -> 48 kHz and the module only
+resolves on Quasar's `LD_LIBRARY_PATH`. System `aplay` passes the same PCM because
+it runs with that path, so probe in the receiver's loader environment. The station
+volume therefore scales AirPlay; the sender slider applies on top of it.
+
+The firmware has no `dbus-daemon`/`dbus-send`; the profile runs the packaged
+pair. maind publishes `yandexmini-<mv_uuid>` (`mv_uuid` in the Linkplay factory
+JSON `/vendor/new_nvram_config`, the value of the firmware `device_id` tool); the
+boot/CPU serial is a different id. Do not read `/sys/class/efuse` or
+`/sys/class/unifykeys` while looking for it: a plain read froze the speaker until
+it was power-cycled.
+
+BetterYAM binds only the LAN address unless told otherwise and passes that address
+as `YAM_API_URL`. The supervisor accepts it because it belongs to one of the
+speaker's own interfaces; any other non-loopback host is still rejected.
+Upstream yamd 0.1.18 does not recognise this Mini (no ring LEDs in sysfs, device
+tree only says `Amlogic`). The kernel logs `syscall 403` (`clock_gettime64`) from
+the glibc 2.36 runtime; glibc falls back and playback is unaffected.
+
+Owner confirmed audible iPhone AirPlay 2 playback with Alice still running; a
+RAOP test tone from a Mac also played. Stop leaves no plugin children; after a
+full reboot with the stock BetterYAM init script, the plugin and Alice came back
+without intervention.
+Long-run stability, multiroom and simultaneous playback with other stations are
+unverified.
 
 See [AIRPLAY2.md](AIRPLAY2.md) for protocol checks and
 [CONTRIBUTE.md](../CONTRIBUTE.md) for extension/icon rules.

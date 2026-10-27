@@ -1,3 +1,11 @@
+## 1.4.3
+
+- Station Mini (`yandexmini`; BetterYAM also reports `YandexStationMini`): shared profile with the ARMhf receiver and the firmware ALSA from `/system/vendor/quasar/libs` preloaded. It plays on `softvol` (firmware `Master` -> dmix `dmixer`, 48 kHz S16_LE), so the station volume and the sender slider both apply. Alice stays up; clock and RGB are not used.
+- `plug:` PCMs do not work in the receiver on the Mini: its alsa-lib loads a libsamplerate rate converter even for 48 kHz -> 48 kHz, and that module only resolves on Quasar's library path (`Unable to set hw parameters ... No such file or directory`).
+- The Mini firmware has no D-Bus. The package now carries ARMhf `dbus-daemon`/`dbus-send` from the pinned dbus-1.16.2, run behind the packaged loader for profiles with `packagedDBus` only. Other models keep firmware D-Bus.
+- BetterYAM binds only the LAN address and passes it as `YAM_API_URL`. The supervisor now accepts an address of one of its own interfaces as well as loopback; a remote token target is still rejected.
+- The Mini's maind publishes `yandexmini-<mv_uuid>`; the id comes from the Linkplay factory file `/vendor/new_nvram_config`, not the boot serial (`nvramHostID`).
+
 ## 1.4.2
 
 - Light 2 (`yandexplum`, `plum`) uses the Station 2 shared mixer `plug:dmix_spk` with the ARMhf receiver and firmware ALSA, so Alice stays up. Avahi reuses `YandexLite-gen2-<device id>`. YAM takes the segment clock and the 3 LEDs for the whole time the service runs and restores the clock frame on stop.

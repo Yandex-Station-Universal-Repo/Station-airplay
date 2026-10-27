@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.4.2"
+	version      = "Station airplay 1.4.3"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -50,10 +50,29 @@ func newYAMAPI() (*yamAPI, error) {
 		return nil, errors.New("missing YAM_API_URL or YAM_API_TOKEN: start through yam enable/run, not directly")
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1") {
-		return nil, errors.New("YAM_API_URL must be a loopback HTTP address")
+	if err != nil || u.Scheme != "http" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1" && !ownAddress(u.Hostname())) {
+		return nil, errors.New("YAM_API_URL must be a loopback or own-interface HTTP address")
 	}
 	return &yamAPI{base: strings.TrimRight(raw, "/"), token: token, client: &http.Client{Timeout: 1200 * time.Millisecond}}, nil
+}
+
+// ownAddress: BetterYAM binds only the LAN address and passes it as
+// YAM_API_URL. Traffic to an address of this host never leaves it.
+func ownAddress(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }
 func (a *yamAPI) request(method, path string, payload interface{}, dest interface{}) error {
 	var body io.Reader
@@ -139,6 +158,15 @@ type stationProfile struct {
 	// brightness writes detach her ring trigger. Hold both for the service
 	// lifetime; audio still goes through the shared PCM.
 	ui bool
+	// alsaLib: firmware ALSA preloaded into the ARMhf receiver so it joins
+	// Quasar's dmix with the same alsa-lib. Empty means /usr/lib/libasound.so.2.
+	alsaLib string
+	// nvramHostID: Linkplay firmware publishes <prefix>-<mv_uuid> from
+	// linkplayNvram, not the boot serial.
+	nvramHostID bool
+	// packagedDBus: the firmware has no dbus-daemon/dbus-send; run the
+	// packaged ARMhf build for the private bus.
+	packagedDBus bool
 }
 
 var (
@@ -150,6 +178,13 @@ var (
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
+		// Mini (Amlogic AXG, Linkplay firmware): ARMhf userspace on an AArch64
+		// kernel. Quasar's default is plug -> softvol "Master" -> dmix "dmixer"
+		// on hw:0,0 at 48 kHz. Open softvol directly: this alsa-lib's plug loads
+		// a libsamplerate converter that only resolves on Quasar's library path
+		// (hw params fail with ENOENT). Station volume applies to AirPlay too.
+		// Firmware alsa-lib lives under quasar/libs. No D-Bus on the firmware.
+		{name: "Yandex Station Mini AirPlay", models: []string{"yandexmini", "YandexStationMini"}, pcm: "softvol", quasarCoexist: true, mdnsHostPrefix: "yandexmini", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", alsaLib: "/system/vendor/quasar/libs/libasound.so.2", nvramHostID: true, packagedDBus: true},
 	}
 	// hw is the detected profile; verifyYAM sets it before anything renders.
 	hw = plumProfile
@@ -279,11 +314,7 @@ func avahiConfig(root, st string, p stationProfile) (string, error) {
 	if p.mdnsHostPrefix == "" || (p.pcm == "" && !quasarRunning()) {
 		return filepath.Join(root, "config/avahi-daemon.conf"), nil
 	}
-	b, e := os.ReadFile("/proc/cmdline")
-	if e != nil {
-		return "", e
-	}
-	host, e := stockHostname(p.mdnsHostPrefix, string(b))
+	host, e := stockHost(p)
 	if e != nil {
 		return "", e
 	}

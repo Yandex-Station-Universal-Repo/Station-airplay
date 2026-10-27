@@ -12,6 +12,7 @@ Policy, secrets, and the PR rules are in [CONTRIBUTE.md](../CONTRIBUTE.md). This
 - Do not open `hw:0,0` or any exclusive PCM when a shared mixer already accepts audio.
 - Do not invent `mdnsHostPrefix`. A wrong prefix leaves the process running and the phone empty.
 - Do not commit serials, tokens, Wi-Fi data, IPs, or full device logs.
+- Do not read `/sys/class/efuse` or `/sys/class/unifykeys`. On the Mini a plain read froze the speaker until a power cycle.
 - Do not add a receiver binary. `bin/shairport-sync-ap2` is ARMhf. `bin/shairport-sync-ap2-aarch64` is AArch64. Both are Shairport Sync 5.6.2. One ARMhf `bin/nqptp` serves both.
 
 ## Paths already in the tree
@@ -30,9 +31,12 @@ Shared profiles require `yam device` `architecture` `aarch64`. That is the kerne
 |---|---|---|---|---|---|
 | `yandexstation_2` | `plug:dmix_spk` | `armhf` | `yandex-station-gen2` | false | `AudioAccessory1,1` |
 | `yandexmicro` | `plug:dmix_spk` | `armhf` | `yandexmicro` | false | `AudioAccessory5,1` |
+| `yandexmini`, `YandexStationMini` | `softvol` | `armhf` | `yandexmini` | false | `AudioAccessory5,1` |
 | `yandexmini_3_pro` | `speakers` | `aarch64` | `Yandex-Station-Mini-3-Pro` | false | `AudioAccessory5,1` |
 | `yandexplum`, `plum` | `plug:dmix_spk` | `armhf` | `YandexLite-gen2` | true | `AudioAccessory5,1` |
 | `yandexmidi` | empty | | `yandex-station-midi` | `pipeOutput` | `AudioAccessory1,1` |
+
+The Mini also sets `alsaLib` (firmware ALSA is not in `/usr/lib`), `nvramHostID` (step 4) and `packagedDBus` (no `dbus-daemon` in the firmware). See [SHARED_MODELS.md](SHARED_MODELS.md).
 
 Compact speakers use `AudioAccessory5,1` (HomePod mini). Full-size stations use `AudioAccessory1,1` (HomePod). The string is `airplayModel` on the profile. It is copied into `general.model`.
 
@@ -87,6 +91,8 @@ Candidates, in order: the `pcm.` name in `/etc/asound.conf` that is `type plug` 
 | Exit not 0, and `aplay -D speakers` works only with system `aplay` | `pcm` empty, `pipeOutput: true`, same pattern as Midi. Document why firmware `libasound` cannot join the dmix. |
 | No shared PCM exists | Stop. Exclusive `hw:` playback drops Alice. Do it only after the owner asks for audio-only mode, and set `quasarCoexist: false`. |
 
+System `aplay` runs with the firmware library path; the receiver does not. Repeat the probe behind the packaged loader before trusting it: `<pkg>/lib/ld-linux-armhf.so.3 --library-path <pkg>/lib --preload <firmware libasound.so.2> <aplay or a small ALSA client>`. On the Mini every `plug:` PCM passed with system `aplay` and failed in the receiver (`Unable to set hw parameters ... No such file or directory`, a libsamplerate converter that only Quasar's path resolves); `softvol` works. If `/usr/lib/libasound.so.2` does not exist, find the firmware library in `/proc/<mediad pid>/maps` and set `alsaLib`.
+
 44.1 kHz is not a substitute. These mixers are 48 kHz. `receiverConfig` already sets `output_rate = 48000` and `S16_LE`.
 
 ## 3. Clock and LEDs
@@ -106,6 +112,8 @@ If the speaker has no confirmed clock, leave `ui: false`. Missing LEDs must not 
 `dns-sd -L` prints `can be reached at <host>.local`. `<host>` must equal `mdnsHostPrefix + "-" + androidboot.serialno`.
 
 `stockHostname` in `source/profiles.go` does that join. The serial is the alphanumeric `androidboot.serialno` value, not the Unix hostname and not the last four characters. If the browsed host does not match that join, do not guess another prefix.
+
+The Mini is the exception: its host is `yandexmini-<mv_uuid>`, the id the firmware `device_id` tool prints, from the Linkplay factory JSON `/vendor/new_nvram_config`. `nvramHostID` reads it from there. Use the same check: the joined value must equal the browsed host.
 
 `avahiConfig` then sets `host-name` to that string, `publish-addresses=no`, and `allow-interfaces=wlan0`. Do not publish a second A record. Do not change `allow-interfaces` unless the speaker's Wi-Fi interface is not `wlan0` and discovery failed because of it.
 

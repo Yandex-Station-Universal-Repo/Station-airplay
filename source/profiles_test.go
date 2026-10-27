@@ -48,6 +48,8 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 		{"yandexmicro", "plug:dmix_spk", "armhf", "AudioAccessory5,1"},
+		{"yandexmini", "softvol", "armhf", "AudioAccessory5,1"},
+		{"YandexStationMini", "softvol", "armhf", "AudioAccessory5,1"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			p, ok := profileFor(tc.model)
@@ -122,5 +124,37 @@ func TestStockMDNSHostname(t *testing.T) {
 		if _, err := stockHostname("yandex-station-gen2", cmdline); err == nil {
 			t.Fatalf("accepted unsafe serial %q", cmdline)
 		}
+	}
+	// The Mini's maind publishes the Linkplay mv_uuid, not the boot serial.
+	p, _ := profileFor("yandexmini")
+	if !p.nvramHostID {
+		t.Fatal("Mini must take its mDNS host id from Linkplay nvram")
+	}
+	got, err := nvramHostname(p.mdnsHostPrefix, []byte(`{"Private_PrjName":"YandexStationMini","SSID1":"YandexStationMini_TEST","mv_uuid":"FF00TEST123"}`))
+	if err != nil || got != "yandexmini-FF00TEST123" {
+		t.Fatalf("nvram hostname %q %v", got, err)
+	}
+	for _, raw := range []string{"", "{}", `{"mv_uuid":"../bad"}`, `{"mv_uuid":"bad\""}`} {
+		if _, err := nvramHostname("yandexmini", []byte(raw)); err == nil {
+			t.Fatalf("accepted unsafe nvram %q", raw)
+		}
+	}
+}
+
+func TestMiniUsesFirmwareALSAAndPackagedDBus(t *testing.T) {
+	mini, _ := profileFor("yandexmini")
+	if got := firmwareALSA(mini); got != "/system/vendor/quasar/libs/libasound.so.2" {
+		t.Fatalf("Mini firmware ALSA %q", got)
+	}
+	bin, args := dbusCommand("/pkg", mini, "dbus-daemon")
+	if bin != "/pkg/lib/ld-linux-armhf.so.3" || strings.Join(args, " ") != "--library-path /pkg/lib /pkg/bin/dbus-daemon" {
+		t.Fatalf("Mini D-Bus %s %v", bin, args)
+	}
+	station2, _ := profileFor("yandexstation_2")
+	if got := firmwareALSA(station2); got != "/usr/lib/libasound.so.2" {
+		t.Fatalf("Station 2 firmware ALSA changed: %q", got)
+	}
+	if bin, args := dbusCommand("/pkg", station2, "dbus-send"); bin != "/usr/bin/dbus-send" || len(args) != 0 {
+		t.Fatalf("Station 2 must keep firmware D-Bus: %s %v", bin, args)
 	}
 }
