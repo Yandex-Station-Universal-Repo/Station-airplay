@@ -376,27 +376,19 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	if err = launch("dbus-daemon", dbusBin, append(dbusArgs, "--config-file="+filepath.Join(state, "bus.conf"), "--nofork")...); err != nil {
 		return err
 	}
-	ready := func(check func() bool) error {
-		deadline := time.NewTimer(10 * time.Second)
-		defer deadline.Stop()
-		tick := time.NewTicker(100 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			if check() {
-				return nil
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case ex := <-exits:
-				return fmt.Errorf("%s exited during startup: %v", ex.name, ex.err)
-			case <-deadline.C:
-				return errors.New("private Avahi/D-Bus startup timed out")
-			case <-tick.C:
-			}
-		}
+	ready := func(stage string, check func(context.Context) error) error {
+		return waitSharedStartup(ctx, stage, sharedStartupTimeout, sharedStartupInterval, exits, check)
 	}
-	if err = ready(func() bool { fi, e := os.Stat(bus); return e == nil && fi.Mode()&os.ModeSocket != 0 }); err != nil {
+	if err = ready("private D-Bus socket", func(context.Context) error {
+		fi, e := os.Stat(bus)
+		if e != nil {
+			return e
+		}
+		if fi.Mode()&os.ModeSocket == 0 {
+			return errors.New("private bus path is not a socket")
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	ld32 := filepath.Join(root, "lib/ld-linux-armhf.so.3")
@@ -406,14 +398,20 @@ func serveShared(ctx context.Context, p stationProfile) error {
 		"-f", avahiConf, "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title"); err != nil {
 		return err
 	}
-	if err = ready(func() bool {
-		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
+	if err = ready("private Avahi D-Bus registration", func(parent context.Context) error {
+		checkCtx, cancel := context.WithTimeout(parent, 3*time.Second)
 		defer cancel()
 		sendBin, sendArgs := dbusCommand(root, p, "dbus-send")
 		c := exec.CommandContext(checkCtx, sendBin, append(sendArgs, "--system", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.Avahi")...)
 		c.Env = env
-		b, e := c.Output()
-		return e == nil && strings.Contains(string(b), "boolean true")
+		b, e := c.CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("Avahi NameHasOwner: %w: %.1024s", e, b)
+		}
+		if !strings.Contains(string(b), "boolean true") {
+			return errors.New("Avahi has not acquired its D-Bus name")
+		}
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -436,13 +434,13 @@ func serveShared(ctx context.Context, p stationProfile) error {
 	if err = launchAP2("nqptp", "-v"); err != nil {
 		return err
 	}
-	if err = ready(func() bool {
+	if err = ready("nqptp UDP 9000", func(context.Context) error {
 		socket, e := net.ListenPacket("udp4", "127.0.0.1:9000")
 		if e == nil {
 			socket.Close()
-			return false
+			return errors.New("nqptp has not bound UDP 9000")
 		}
-		return true
+		return nil
 	}); err != nil {
 		return err
 	}
