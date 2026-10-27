@@ -6,7 +6,7 @@
   "bin/nqptp": "c04fd3de01e76c488fe49d83b16603001fd5990a49433bb3f75bca8ea52b271a",
   "bin/shairport-sync-ap2": "548720fdfdf715b5439d80a8531d64df0182be4ed0cf1e2d04c32c4910549c92",
   "bin/shairport-sync-ap2-aarch64": "9e82c6af41c5f5b45f4c29bb80de9a3808398eaf5ec70f5fc3e908fe0b3bcc21",
-  "bin/station-airplay": "12bf0cac3050acf55105993f02a4b8707a9d854ce1609470ca4be314cafd402a",
+  "bin/station-airplay": "fe007b733bbd8c98773d0c08d4629819a1f8bc9ce82fdd19d3cc88b777b923e7",
   "lib/aarch64/libplist-2.0.so.3": "e1c45ab78945b55da3a8006498ea39d7c4964672605f16bce29b58ec5759657d",
   "lib/ld-linux-armhf.so.3": "8e92cb32a82f67783403bf4c5d9704e201fe1c15476f082655760a00205eee80",
   "lib/libasound.so.2": "547dfdc55aeb012d54a100bd26dff17479fea7889ea3096e880e7d40180cd43c",

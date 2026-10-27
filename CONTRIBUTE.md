@@ -53,7 +53,7 @@ resampling: рабочие 44,1 кГц старого receiver не доказы
 
 Следуйте `source/BUILD.md`. Запустите `go test ./...`, `go vet ./...`, проверки migration-скриптов и сборки поддерживаемых архитектур. Добавьте содержательные тесты выбора моделей, ABI, генерации аудиоконфига, отсутствия утечки runtime token и отказа неизвестным устройствам. Соберите `.yap` с `plugin.toml` в корне; проверьте manifest, permissions, ELF и executable bits.
 
-Установка — средствами YAM: `yam install FILE.yap`, `yam enable station-airplay`, затем `yam ps`, `yam logs station-airplay`. При закрытом WAN скачайте пакет на компьютере и передайте локально; не включайте интернет колонки ради скачивания. Не обновляйте сам yamd без необходимости и разрешённого объёма работы.
+Установка — средствами YAM: `yam install FILE.yap`, `yam service enable station-airplay`, затем `yam service list`, `yam service logs station-airplay`. YAM 0.1.18 запускает binary-пакеты, только если в web UI включено «Разрешить бинарники плагинов» (`allow_plugin_binaries = true`); иначе — `binary execution disabled by administrator`. При закрытом WAN скачайте пакет на компьютере и передайте локально; не включайте интернет колонки ради скачивания. Не обновляйте сам yamd без необходимости и разрешённого объёма работы.
 
 Проверьте на реальном устройстве:
 

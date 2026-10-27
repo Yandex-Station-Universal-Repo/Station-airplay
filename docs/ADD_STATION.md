@@ -30,7 +30,7 @@ Shared profiles require `yam device` `architecture` `aarch64`. That is the kerne
 | YAM model | `pcm` | `receiverABI` | `mdnsHostPrefix` | `ui` | AirPlay `model` |
 |---|---|---|---|---|---|
 | `yandexstation_2` | `plug:dmix_spk` | `armhf` | `yandex-station-gen2` | false | `AudioAccessory1,1` |
-| `yandexmicro` | `plug:dmix_spk` | `armhf` | `yandexmicro` | false | `AudioAccessory5,1` |
+| `yandexmicro` | `soft_volume` | `armhf` | `yandexmicro` | false | `AudioAccessory5,1` |
 | `yandexmini`, `YandexStationMini` | `softvol` | `armhf` | `yandexmini` | false | `AudioAccessory5,1` |
 | `yandexmini_3_pro` | `speakers` | `aarch64` | `Yandex-Station-Mini-3-Pro` | false | `AudioAccessory5,1` |
 | `bergamot` | `speakers` | `armhf` | `YandexMini3` | false | `AudioAccessory5,1` |
@@ -154,6 +154,9 @@ python3 tests/test_package.py
 `go test` on Darwin fails: `Pdeathsig` exists only for `GOOS=linux`. Compile the test binary as above and run it on the speaker, or run `go test ./...` on Linux. Pack the supervisor. `tests/test_package.py` rejects an unpacked archive over 10 MiB.
 
 Install the `.yap` from the computer. `dist/` is gitignored; do not commit it.
+YAM 0.1.18 refuses binary packages until "Разрешить бинарники плагинов" is on in the web UI
+(`allow_plugin_binaries = true` in `settings.toml`); otherwise the service fails with
+`binary execution disabled by administrator`. First install: `yam service enable station-airplay`.
 
 ```sh
 yam service stop station-airplay

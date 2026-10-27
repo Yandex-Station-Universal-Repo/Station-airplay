@@ -1,6 +1,6 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "1.4.4"
+version = "1.4.5"
 entry = "bin/station-airplay"
 description = "AirPlay 2 receiver: Light 2, Lite, Midi, Station 2, Mini, Mini 3 and Mini 3 Pro; shared audio with Alice on Light 2, Lite, Station 2, Mini, Mini 3 and Mini 3 Pro."
 permissions = ["exec", "clock", "led"]
