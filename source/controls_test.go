@@ -303,3 +303,17 @@ func TestControlStateSchemaIdleRestoreAndStaleSnapshot(t *testing.T) {
 		t.Fatal("missing observer treated as IDLE")
 	}
 }
+
+func TestMissingControlsConfigDisablesControls(t *testing.T) {
+	if c, e := loadControlsOptional(filepath.Join(t.TempDir(), "absent.json")); c != nil || e != nil {
+		t.Fatal("missing file must disable controls", c, e)
+	}
+	if c, e := loadControlsOptional(""); c != nil || e != nil {
+		t.Fatal("empty path must disable controls", c, e)
+	}
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	_ = os.WriteFile(bad, []byte(`{"typo":true}`), 0600)
+	if _, e := loadControlsOptional(bad); e == nil {
+		t.Fatal("malformed configuration must still fail")
+	}
+}

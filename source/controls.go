@@ -45,6 +45,17 @@ func loadControls(path string) (*controlsConfig, error) {
 	return &c, nil
 }
 
+// loadControlsOptional treats a missing configuration file as "controls
+// disabled": the package ships --controls-config, so a host without the file
+// must keep working as an audio-only receiver instead of failing to start.
+func loadControlsOptional(path string) (*controlsConfig, error) {
+	c, err := loadControls(path)
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return c, err
+}
+
 type receiverState struct {
 	Active, Available bool
 	Client            string

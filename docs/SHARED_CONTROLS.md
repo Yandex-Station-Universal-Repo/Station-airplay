@@ -29,8 +29,12 @@ controller.
 
 ## Opt in
 
-Pass `--controls-config /absolute/user-chosen/controls.json` to the existing
-service. Lite 2 shared audio also needs `--shared-audio`. Example content:
+The package launches the service with `--shared-audio --controls-config
+../../airplay-controls.json`, resolved against the plugin directory, so the file
+lives in the YAM data directory next to `plugins/`. If that file is missing, the
+controls stay off and the receiver still starts as an audio-only service with a
+startup warning; point the flag at another absolute path to use a different file.
+Example content:
 
 ```json
 {"voice":true,"native_volume":false,"ducking":true,"leds":false}

@@ -1182,10 +1182,13 @@ func main() {
 	// yamd 0.1.x does not set a parent-death signal on binary plugins. Retire
 	// this service if its owning daemon disappears, before a replacement starts.
 	go watchParent(ctx, cancel, os.Getppid(), os.Getppid)
-	controls, err := loadControls(*controlsPath)
+	controls, err := loadControlsOptional(*controlsPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "controls configuration:", err)
 		os.Exit(1)
+	}
+	if controls == nil && *controlsPath != "" {
+		fmt.Fprintln(os.Stderr, "controls configuration not found, shared controls disabled:", *controlsPath)
 	}
 	if e := runWithControls(ctx, *sharedAudio, controls); e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)

@@ -3,13 +3,17 @@ name = "Station airplay"
 version = "1.4.4"
 entry = "bin/station-airplay"
 description = "AirPlay 2 receiver: Light 2, Lite, Midi, Station 2, Mini, Mini 2 and Mini 3 Pro; shared audio with Alice; optional voice, sender transport, native volume and indication."
-permissions = ["exec", "clock", "led"]
+permissions = ["exec", "clock", "led", "ipc.speech", "commands"]
 
 [launch]
 kind = "binary"
 mode = "service"
 path = "bin/station-airplay"
+args = ["--shared-audio", "--controls-config", "../../airplay-controls.json"]
 
 [compatibility]
 models = ["yandexmini_2", "yandexplum", "plum", "yandexstation_2", "yandexmini_3_pro", "yandexmidi", "yandexmicro", "yandexmini", "YandexStationMini"]
 features = []
+
+[commands]
+phrases = ["стоп", "пауза", "останови", "останови музыку", "хватит", "хватит музыку", "достаточно", "прекрати", "выключи музыку", "pause", "продолжи", "продолжи музыку", "продолжай", "возобнови музыку", "играй", "включи музыку", "play", "resume", "дальше", "далее", "следующий", "следующий трек", "следующая песня", "пропусти", "next", "назад", "прошлый трек", "прошлая песня", "предыдущий трек", "предыдущая песня", "верни трек", "previous"]
