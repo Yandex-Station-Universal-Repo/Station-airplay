@@ -48,7 +48,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 		{"bergamot", "speakers", "armhf", "AudioAccessory5,1"},
-		{"yandexmicro", "plug:dmix_spk", "armhf", "AudioAccessory5,1"},
+		{"yandexmicro", "soft_volume", "armhf", "AudioAccessory5,1"},
 		{"yandexmini", "softvol", "armhf", "AudioAccessory5,1"},
 		{"YandexStationMini", "softvol", "armhf", "AudioAccessory5,1"},
 	} {

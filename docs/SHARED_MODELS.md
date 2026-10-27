@@ -6,7 +6,7 @@
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
 | `bergamot` (Мини 3) | ARMhf | `speakers` | HomePod mini |
 | `yandexplum`, `plum` (Лайт 2) | ARMhf | `plug:dmix_spk` | HomePod mini |
-| `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
+| `yandexmicro` (Лайт) | ARMhf | `soft_volume` | HomePod mini |
 | `yandexmini`, `YandexStationMini` (Мини) | ARMhf | `softvol` | HomePod mini |
 
 Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
@@ -51,6 +51,27 @@ with Alice still running. The YAM installer adds no boot hook on Lite; with an
 owner-added `/etc/init.d/S99zyamd` (start-stop-daemon, same command as the
 installer) yamd and the plugin came back after two reboots. Long-run stability and
 multiroom are unverified.
+
+A second Lite (`Yandex Station Micro v1.2` device tree, same `.46` firmware), fresh
+YAM 0.1.18: YAM detects `yandexmicro`. The profile runs on firmware D-Bus and on
+`/usr/lib/libasound.so.2` (the library `maind --mediad` maps). Avahi takes the stock
+`yandexmicro-<serial>` host without a `-2` suffix. iPhone AirPlay 2 playback works
+with Alice running, and `yam service stop` leaves no children or ports. YAM 0.1.18's
+installer creates `/etc/init.d/S99yam`; after a reboot yamd, the plugin and Alice came
+back on their own. Binary packages run only after `allow_plugin_binaries` is enabled
+(a web UI switch). After the service was restarted while the iPhone was streaming to
+it, the iPhone stopped listing the Lite. The Mac still saw the same advert, with
+`pk`/`pi`/`deviceid` unchanged. The Lite came back on the iPhone after the speaker
+rebooted. The cause was not isolated.
+
+Since 1.4.5 the Lite plays on the firmware `soft_volume` PCM, the same chain Alice
+uses: softvol `Master Playback Volume` -> `dmix_spk_plug` -> `dmix_spk`. Alice sets
+the station volume only on that softvol control (`set_volume.sh` runs
+`amixer set 'Master' N%`). With
+`plug:dmix_spk` AirPlay bypassed it: the sender slider ran 0–100 % of full scale
+and Alice became nearly inaudible next to the music. Now the station volume is
+the ceiling and the sender slider works inside it, as on the Mini. The owner confirmed
+this by ear.
 
 Mini (`yandexmini`, Amlogic AXG, Linkplay-based firmware
 `1.305.4.16.3237824040.20250721`), BetterYAM 0.1.18: 1.4.3 runs the static ARMv7

@@ -1,3 +1,9 @@
+## 1.4.5
+
+- Lite (`yandexmicro`) plays on the firmware `soft_volume` PCM instead of `plug:dmix_spk`. Alice sets the station volume on its softvol `Master` (`set_volume.sh` -> `amixer set Master`), and `plug:dmix_spk` bypassed it, so AirPlay ignored the station volume and drowned out Alice's voice. Now the station volume is the ceiling and the sender slider works inside it, the same as on the Mini.
+- Supervisor rebuilt with the `go.mod` toolchain go1.23.12. The checked-in binary had been built with Go 1.25.7 and was 209 KiB larger. `third_party/SHA256SUMS.json` now matches the shipped binary.
+- Install docs: YAM 0.1.18 runs binary packages only when `allow_plugin_binaries` is on ("Разрешить бинарники плагинов"). Use `yam service enable station-airplay` for the background service.
+
 ## 1.4.4
 
 - Яндекс Станция Мини 3 (`bergamot`): shared-профиль, ARMhf receiver 5.6.2, общий PCM `speakers` 48 кГц/S16_LE, Алиса сохраняется, mDNS-хост `YandexMini3-<serial>`, иконка HomePod mini. Часы и RGB не занимаются. YAM не узнаёт `yandex,bergamot` и схлопывает `yandexmini_3` в модель Мини первого поколения `yandexmini`, поэтому стабильный id задаётся в `device.toml` как `bergamot`.
