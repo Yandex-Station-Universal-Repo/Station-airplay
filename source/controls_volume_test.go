@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func volumeFixture(t *testing.T, script string) (string, yamDevice) {
@@ -104,5 +105,91 @@ func TestVolumeDependencyMissingPreflightFailsClosed(t *testing.T) {
 	}
 	if e = v.checkWrite(context.Background()); e == nil {
 		t.Fatal("unsupported write firmware accepted")
+	}
+}
+
+func retryWindow(t *testing.T, timeout, interval time.Duration) {
+	t.Helper()
+	oldTimeout, oldInterval := nativeVolumeReadyTimeout, nativeVolumeRetryInterval
+	nativeVolumeReadyTimeout, nativeVolumeRetryInterval = timeout, interval
+	t.Cleanup(func() {
+		nativeVolumeReadyTimeout, nativeVolumeRetryInterval = oldTimeout, oldInterval
+	})
+}
+
+// A cold boot starts this plugin before mediad publishes the volume IPC.
+func TestNativeVolumePreflightRetriesUntilIPCReady(t *testing.T) {
+	script := `#!/bin/sh
+case "$*" in
+ check-write) echo ok;;
+ get)
+  n=$(cat "$0.count" 2>/dev/null || echo 0)
+  n=$((n+1))
+  echo "$n" > "$0.count"
+  if [ "$n" -lt 3 ]; then
+   echo 'native volume connection: connect: no such file or directory' >&2
+   exit 1
+  fi
+  echo 40
+  ;;
+ *) exit 2;;
+esac
+`
+	root, d := volumeFixture(t, script)
+	v, e := findPackageVolume(root, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	retryWindow(t, 5*time.Second, 5*time.Millisecond)
+	if e = waitNativeVolume(context.Background(), v); e != nil {
+		t.Fatal("cold boot race was not absorbed:", e)
+	}
+	count, e := os.ReadFile(filepath.Join(filepath.Dir(root), "station-volume", "station-volume.sh.count"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.TrimSpace(string(count)) != "3" {
+		t.Fatal("unexpected attempt count", string(count))
+	}
+}
+
+func TestNativeVolumePreflightGivesUpWithDetail(t *testing.T) {
+	script := `#!/bin/sh
+case "$*" in
+ check-write) echo ok;;
+ get) echo 'native volume connection: connect: no such file or directory' >&2; exit 1;;
+ *) exit 2;;
+esac
+`
+	root, d := volumeFixture(t, script)
+	v, e := findPackageVolume(root, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	retryWindow(t, 60*time.Millisecond, 10*time.Millisecond)
+	e = waitNativeVolume(context.Background(), v)
+	if e == nil {
+		t.Fatal("persistent volume failure accepted")
+	}
+	if !strings.Contains(e.Error(), "no such file or directory") {
+		t.Fatal("stderr detail lost:", e)
+	}
+}
+
+func TestNativeVolumePreflightHonorsCancellation(t *testing.T) {
+	root, d := volumeFixture(t, "#!/bin/sh\ncase \"$*\" in\n check-write) echo ok;;\n get) exit 1;;\n *) exit 2;;\nesac\n")
+	v, e := findPackageVolume(root, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	retryWindow(t, 30*time.Second, 10*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if e = waitNativeVolume(ctx, v); e == nil {
+		t.Fatal("cancelled wait succeeded")
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("cancellation ignored")
 	}
 }

@@ -284,10 +284,41 @@ func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg contro
 		if err = v.checkWrite(ctx); err != nil {
 			return err
 		}
-		_, err = v.GetVolume(ctx)
-		if err != nil {
+		if err = waitNativeVolume(ctx, v); err != nil {
 			return fmt.Errorf("native volume preflight failed; receiver was not started: %w", err)
 		}
 	}
 	return nil
+}
+
+// yamd starts this plugin before mediad publishes the native volume IPC:
+// measured plugin start at T+16.2 s against mediad at T+16.5..24 s, so a cold
+// boot raced the volume read and the whole service exited. Retry the read for a
+// bounded window instead of leaving the station without AirPlay until a restart.
+var (
+	nativeVolumeReadyTimeout  = 60 * time.Second
+	nativeVolumeRetryInterval = time.Second
+)
+
+func waitNativeVolume(ctx context.Context, v *packageVolume) error {
+	deadline := time.Now().Add(nativeVolumeReadyTimeout)
+	reported := false
+	for {
+		_, err := v.GetVolume(ctx)
+		if err == nil {
+			return nil
+		}
+		if !reported {
+			fmt.Printf("station volume: native volume is not ready yet: %v\n", err)
+			reported = true
+		}
+		if !time.Now().Before(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(nativeVolumeRetryInterval):
+		}
+	}
 }

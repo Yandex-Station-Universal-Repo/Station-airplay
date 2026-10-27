@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,10 +100,13 @@ func (v *packageVolume) call(ctx context.Context, args ...string) (string, error
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = 100 * time.Millisecond
-	var out smallOutput
+	var out, errOut smallOutput
 	cmd.Stdout = &out
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &errOut
 	if e := cmd.Run(); e != nil {
+		if detail := strings.TrimSpace(errOut.text.String()); detail != "" {
+			return "", fmt.Errorf("station-volume command failed or firmware is not verified: %s", detail)
+		}
 		return "", errors.New("station-volume command failed or firmware is not verified")
 	}
 	return strings.TrimSpace(out.text.String()), nil
