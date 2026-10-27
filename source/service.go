@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.4.3"
+	version      = "Station airplay 1.4.4"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -42,6 +43,7 @@ type yamDevice struct {
 	Model        string   `json:"model"`
 	Architecture string   `json:"architecture"`
 	Features     []string `json:"features"`
+	Room         string   `json:"room"`
 }
 
 func newYAMAPI() (*yamAPI, error) {
@@ -174,7 +176,10 @@ var (
 	// YandexLite-gen2-<device id>. /etc/asound.conf mixes on dmix_spk.
 	plumProfile = stationProfile{name: "Yandex Station Light 2 AirPlay", models: []string{"yandexplum", "plum"}, leds: 3, digitBase: 0, colon: []string{"DH", "DL"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", ui: true}
 	midiProfile = stationProfile{name: "midi", models: []string{"yandexmidi"}, leds: 24, digitBase: 1, quasarCoexist: true, mdnsHostPrefix: "yandex-station-midi", pipeOutput: true, airplayModel: "AudioAccessory1,1"}
-	profiles    = []stationProfile{plumProfile, midiProfile,
+	// Shared audio-only profiles: no clock/RGB requirements, Alice stays running.
+	mini2Profile      = stationProfile{name: "Yandex Mini 2 AirPlay", models: []string{"yandexmini_2"}, pcm: "default", quasarCoexist: true, mdnsHostPrefix: "yandexmini-2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
+	plumSharedProfile = stationProfile{name: "Yandex Lite 2 AirPlay", models: []string{"yandexplum", "plum"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
+	profiles          = []stationProfile{plumProfile, midiProfile, mini2Profile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
@@ -1145,7 +1150,14 @@ func runPlum(ctx context.Context) error {
 func main() {
 	// Packaged programs use an explicit loader; keep private libc off stock children.
 	_ = os.Unsetenv("LD_LIBRARY_PATH")
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
+	sharedAudio := flag.Bool("shared-audio", false, "use audio-only shared PCM on supported Plum devices; keep Alice running")
+	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.Parse()
+	if flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "station-airplay: unexpected positional arguments")
+		os.Exit(2)
+	}
+	if *showVersion {
 		fmt.Println(version)
 		return
 	}
@@ -1154,7 +1166,7 @@ func main() {
 	// yamd 0.1.x does not set a parent-death signal on binary plugins. Retire
 	// this service if its owning daemon disappears, before a replacement starts.
 	go watchParent(ctx, cancel, os.Getppid(), os.Getppid)
-	if e := run(ctx); e != nil {
+	if e := run(ctx, *sharedAudio); e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)
 		os.Exit(1)
 	}

@@ -66,7 +66,7 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 	return length, nil
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, sharedAudio bool) error {
 	api, err := newYAMAPI()
 	if err != nil {
 		return err
@@ -80,17 +80,32 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	p, ok := profileFor(d.Model)
+	p, ok := profileForDevice(d, sharedAudio)
 	if !ok {
 		return fmt.Errorf("unsupported YAM model %q", d.Model)
 	}
 	if p.pcm == "" {
 		return runPlum(ctx)
 	}
+	p, err = profileWithRoom(p, d.Room)
+	if err != nil {
+		return err
+	}
 	if d.Architecture != "aarch64" {
 		return errors.New("shared profiles require an AArch64 kernel")
 	}
 	return runShared(ctx, p)
+}
+
+// Clock capability alone does not say whether shared audio is wanted or usable.
+// Explicit opt-in also supports Plum firmware advertising a segment clock.
+// Without opt-in, retain the original clock-equipped Plum renderer.
+func profileForDevice(d yamDevice, sharedAudio bool) (stationProfile, bool) {
+	p, ok := profileFor(d.Model)
+	if ok && (d.Model == "plum" || d.Model == "yandexplum") && (sharedAudio || !feature(d, "display.clock.segment.v1")) {
+		return plumSharedProfile, true
+	}
+	return p, ok
 }
 
 func receiverConfig(p stationProfile) string {

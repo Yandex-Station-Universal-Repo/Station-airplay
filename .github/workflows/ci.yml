@@ -14,15 +14,11 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: source/go.mod
           cache: false
-
       - name: Validate version
         shell: bash
         run: |
@@ -30,75 +26,41 @@ jobs:
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' plugin.toml | head -n 1)
           test -n "$version"
           echo "VERSION=$version" >> "$GITHUB_ENV"
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            test "$GITHUB_REF_NAME" = "v$version" || {
-              echo "Tag $GITHUB_REF_NAME does not match plugin.toml (v$version)" >&2
-              exit 1
-            }
-          fi
-
-      - name: Run Go tests
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$version"; fi
+      - name: Go tests and vet
         working-directory: source
-        run: go test -count=1 ./...
-
-      - name: Run Go vet
-        working-directory: source
-        run: go vet ./...
-
-      - name: Run host tests
-        run: python3 tests/test_host_migration.py
-
-      - name: Build Station AirPlay ARMv7 binary
-        working-directory: source
-        run: GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/station-airplay .
-      - name: AArch64 build
-        working-directory: source
-        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/station-airplay-aarch64 .
-      - name: Host migration tests
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+      - name: Host migration and namespace checks
         run: |
           python3 tests/test_host_migration.py
           python3 -m unittest discover -s tests -p 'test_shared_migration.py' -v
-      - name: Namespace helper syntax
-        run: gcc -fsyntax-only -Wall -Wextra -Werror support/avahi-namespace.c
-      - name: Package
+          gcc -fsyntax-only -Wall -Wextra -Werror support/avahi-namespace.c
+      - name: Build both supervisor targets
+        working-directory: source
+        run: |
+          GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o ../bin/station-airplay .
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o /tmp/station-airplay-aarch64 .
+      - name: Pack only the static supervisor with verified UPX
+        run: |
+          curl -fsSL https://github.com/upx/upx/releases/download/v5.2.1/upx-5.2.1-amd64_linux.tar.xz -o /tmp/upx.tar.xz
+          echo '402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657  /tmp/upx.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/upx.tar.xz -C /tmp
+          /tmp/upx-5.2.1-amd64_linux/upx --best --lzma bin/station-airplay
+          /tmp/upx-5.2.1-amd64_linux/upx -t bin/station-airplay
+      - name: Build and verify the single package
         run: |
           python3 scripts/package.py
           python3 tests/test_package.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: station-airplay-yap
-          path: dist/*.yap
-        env:
-          GOOS: linux
-          GOARCH: arm
-          GOARM: '7'
-          CGO_ENABLED: '0'
-        run: go build -trimpath -ldflags='-s -w' -o ../bin/station-airplay .
-
-      - name: Package single Full YAP
-        run: sh scripts/package.sh
-
-      - name: Verify archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="dist/station-airplay-${VERSION}.yap"
-          test -s "$package"
-          for file in plugin.toml bin/station-airplay bin/shairport-sync-ap2 bin/nqptp bin/avahi-daemon config/avahi-daemon.conf lib/libcrypto.so.1.1 lib/libssl.so.1.1; do
-            tar -tzf "$package" | grep -Fxq "$file" || { echo "Missing $file" >&2; exit 1; }
-          done
           (cd dist && sha256sum "station-airplay-${VERSION}.yap" > SHA256SUMS && sha256sum -c SHA256SUMS)
-          ls -lh "$package"
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: station-airplay-${{ env.VERSION }}
           path: |
-            dist/station-airplay-*.yap
+            dist/*.yap
             dist/SHA256SUMS
           if-no-files-found: error
-          retention-days: 30
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -107,22 +69,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download built package
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: station-airplay-*
           merge-multiple: true
           path: dist
-
-      - name: Publish GitHub Release
+      - name: Publish tagged release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        shell: bash
         run: |
-          set -euo pipefail
-          gh release create "$TAG" dist/*.yap dist/SHA256SUMS \
-            --title "Station AirPlay $TAG" \
-            --notes "Automatically built full YAM package for ARMv7. Includes bundled runtime libraries. Verified target: Yandex Station Light 2 (Plum)." \
-            --verify-tag
+          gh release create "$TAG" dist/*.yap dist/SHA256SUMS --title "Station AirPlay $TAG" --generate-notes --verify-tag

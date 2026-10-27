@@ -5,6 +5,8 @@
 | `yandexstation_2` | ARMhf | `plug:dmix_spk` | HomePod |
 | `yandexmini_3_pro` | AArch64 | `speakers` | HomePod mini |
 | `yandexplum`, `plum` (Лайт 2) | ARMhf | `plug:dmix_spk` | HomePod mini |
+| `yandexplum`, `plum`, `--shared-audio` | ARMhf | `speakers` | HomePod mini |
+| `yandexmini_2` (Мини 2) | ARMhf | `default` | HomePod mini |
 | `yandexmicro` (Лайт) | ARMhf | `plug:dmix_spk` | HomePod mini |
 | `yandexmini`, `YandexStationMini` (Мини) | ARMhf | `softvol` | HomePod mini |
 
@@ -13,6 +15,49 @@ Test firmware: Station 2 `0.369.1.50.4794649087.20261021.295`, Mini 3 Pro
 static ARMv7 supervisor. Audio uses 48 kHz/S16 stereo and retains Alice.
 Both mixers reject 44.1 kHz when resampling is disabled in the new receiver.
 Station 2, Mini 3 Pro and Lite do not touch clock or RGB. Light 2 plays through the same shared mixer and, while the service is running, YAM holds its segment clock and 3 LEDs. The hostname maind already publishes is `YandexLite-gen2-<device id>`.
+
+## Mini 2 and the Lite 2 shared-audio opt-in
+
+Mini 2 (`yandexmini_2`) uses the firmware `default` PCM, which already mixes
+through Master softvol/dmix next to Alice. It is an ARMhf profile on an AArch64
+kernel and does not take clock or RGB.
+
+Light 2 already shares `plug:dmix_spk` with Alice and, while the service runs,
+YAM holds its segment clock and 3 LEDs. `--shared-audio` selects an audio-only
+profile instead: shared PCM `speakers`, no clock and no RGB. Clock capability is
+not a reliable selector — both tested Lite 2 variants advertise segment clocks —
+so the audio-only profile is chosen by the explicit option, or automatically when
+YAM reports no segment clock. Unknown models still fail closed.
+
+Do not replace system ALSA, patch Quasar, change rootfs or use an exclusive
+hardware PCM. One supervisor/native engine lifecycle remains owned by YAM: no
+per-model second manager, former private receiver service or old runtime
+directory is called. Rooms are global YAM metadata, not this option; see
+[ROOMS.md](ROOMS.md).
+
+### Actual software validation, 26 October 2026
+
+| Hardware | Firmware | Validated |
+|---|---|---|
+| Mini 2 | `0.369.1.50.4794659041.20261021.299` | ARMhf load, start/stop, port retirement, RTSP/discovery, room name |
+| Lite 2 Plum | `0.369.1.50.4795647582.20261021.133` | `--shared-audio`, Alice process retained, same checks |
+| Lite 2 Prune (YAM reports `yandexplum`) | `0.369.1.50.4794654278.20261021.133` | same checks; no invented Prune model/capabilities |
+| Station 2 | `0.369.1.50.4794649087.20261021.295` | same checks, existing Station 2 profile unchanged |
+
+Local build used Shairport 5.6.2/smi11 and NQPTP 1.2.9/smi11. The packed ARMv7
+supervisor ran on all four AArch64 kernels with ARMhf userspace. `/info` returned
+the profile's HomePod/HomePod mini model. After disable, owned children and
+timing/RTSP ports retired; re-enable recovered discovery. Native configs/library
+hashes, Alice/Jarvis process identities, Master and read-only rootfs stayed
+unchanged. Room metadata persisted through a daemon restart, independently of the
+package.
+
+**This is not listening acceptance of this commit.** The binary in this PR is
+rebuilt from the rebased source; the listening checks above belong to the pilot
+build. Real buffered music, Alice during playback, volume, multiroom, reconnect
+and phone icon caching still need an owner run on the exact package built here.
+No cold reboot was performed. Neither RTSP200 nor an advertised model proves
+audio, synchronization, lossless or 24-bit output.
 
 ## Install / rollback
 

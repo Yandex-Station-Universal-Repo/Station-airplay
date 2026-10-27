@@ -46,6 +46,7 @@ func TestReceiverLogsStayBounded(t *testing.T) {
 func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 	for _, tc := range []struct{ model, pcm, abi, icon string }{
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
+		{"yandexmini_2", "default", "armhf", "AudioAccessory5,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 		{"yandexmicro", "plug:dmix_spk", "armhf", "AudioAccessory5,1"},
 		{"yandexmini", "softvol", "armhf", "AudioAccessory5,1"},
@@ -70,7 +71,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 			}
 		})
 	}
-	for _, model := range []string{"", "yandexmini_2", "cucumber", "unknown"} {
+	for _, model := range []string{"", "yandexmini_2_unverified", "cucumber", "unknown"} {
 		if _, ok := profileFor(model); ok {
 			t.Fatalf("model %q guessed instead of rejected", model)
 		}
@@ -156,5 +157,40 @@ func TestMiniUsesFirmwareALSAAndPackagedDBus(t *testing.T) {
 	}
 	if bin, args := dbusCommand("/pkg", station2, "dbus-send"); bin != "/usr/bin/dbus-send" || len(args) != 0 {
 		t.Fatalf("Station 2 must keep firmware D-Bus: %s %v", bin, args)
+	}
+}
+
+func TestClocklessLiteUsesSharedAudio(t *testing.T) {
+	for _, model := range []string{"plum", "yandexplum"} {
+		p, ok := profileForDevice(yamDevice{Model: model}, false)
+		if !ok || p.pcm != "speakers" || !p.quasarCoexist || p.receiverABI != "armhf" || p.leds != 0 {
+			t.Fatalf("clockless Lite must share audio without UI: %+v", p)
+		}
+		p, ok = profileForDevice(yamDevice{Model: model, Features: []string{"display.clock.segment.v1"}}, false)
+		if !ok || p.pcm != "plug:dmix_spk" || p.leds != 3 || !p.ui || !p.quasarCoexist {
+			t.Fatal("upstream Light 2 display renderer changed")
+		}
+	}
+	if _, ok := profileForDevice(yamDevice{Model: "unknown"}, false); ok {
+		t.Fatal("ambiguous hardware must not be guessed")
+	}
+}
+
+// Captured YAM reports from the Lite pilot include this clock capability.
+// Shared audio must therefore be explicit, not inferred from clock absence.
+func TestPlumSharedOptInWithReportedClock(t *testing.T) {
+	for _, model := range []string{"plum", "yandexplum"} {
+		d := yamDevice{Model: model, Architecture: "aarch64", Features: []string{"display.clock.segment.v1", "led.ring.rgb", "led.ring.3", "audio.volume.alsa"}}
+		p, ok := profileForDevice(d, true)
+		if !ok || p.pcm != "speakers" || !p.quasarCoexist || p.receiverABI != "armhf" || p.leds != 0 {
+			t.Fatalf("shared opt-in entered exclusive/UI profile: %+v", p)
+		}
+		legacy, ok := profileForDevice(d, false)
+		if !ok || legacy.pcm != "plug:dmix_spk" || legacy.leds != 3 || !legacy.ui || !legacy.quasarCoexist {
+			t.Fatal("upstream clock-equipped Light 2 profile changed")
+		}
+	}
+	if _, ok := profileForDevice(yamDevice{Model: "unknown"}, true); ok {
+		t.Fatal("shared mode must not bypass the model guard")
 	}
 }

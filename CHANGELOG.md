@@ -1,3 +1,21 @@
+## 1.4.4 (не выпущено)
+
+- Точный профиль Mini 2 (`yandexmini_2`): ARMhf, штатный PCM `default`, иконка
+  HomePod mini; Алиса продолжает работать.
+- Явный `--shared-audio` для Лайт 2 (`plum`, `yandexplum`): общий PCM `speakers`
+  без часов и RGB, даже если YAM сообщает сегментные часы. Профиль по умолчанию
+  (`plug:dmix_spk` с часами и 3 RGB) не изменён; без сегментных часов выбирается
+  общий профиль без UI. Неизвестные модели по-прежнему отклоняются.
+- Необязательная общая метка YAM `room` добавляется к имени общего приёмника;
+  обрезка по границе UTF-8 в пределах лимита DNS; управляющие символы и
+  некорректный UTF-8 отклоняются. Без поля имя прежнее.
+- Регрессионные тесты профилей и комнат; обновлены проверки модели в пакете.
+- CI собирает оба supervisor, упаковывает статический ARMv7 проверенным UPX
+  5.2.1 и проверяет единственный пакет; убраны нерабочий смешанный шаг и
+  устаревшие проверки OpenSSL.
+- Пройдены lifecycle/discovery на Mini 2, двух Lite 2 и Station 2; живая
+  приёмка звука, multiroom, переподключение и холодная загрузка — за владельцем.
+
 ## 1.4.3
 
 - Station Mini (`yandexmini`; BetterYAM also reports `YandexStationMini`): shared profile with the ARMhf receiver and the firmware ALSA from `/system/vendor/quasar/libs` preloaded. It plays on `softvol` (firmware `Master` -> dmix `dmixer`, 48 kHz S16_LE), so the station volume and the sender slider both apply. Alice stays up; clock and RGB are not used.
