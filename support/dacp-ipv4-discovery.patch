@@ -1,0 +1,293 @@
+--- a/dacp.c
++++ b/dacp.c
+@@ -491,6 +491,25 @@
+   pthread_mutex_unlock(&dacp_server_information_lock);
+ }
+ 
++#include "dacp_endpoint.h"
++
++// The RTSP socket may use IPv6 while the sender's actual DACP service is IPv4.
++// Adopt only an exact current-session DNS-SD identity, never an arbitrary peer.
++// Availability is still established by the existing authenticated HTTP probe.
++void dacp_monitor_ipv4_endpoint_callback(const char *dacp_id, const char *address, uint16_t port) {
++  if (!dacp_unicast_ipv4(address, port)) return;
++  pthread_mutex_lock(&dacp_server_information_lock);
++  if (dacp_same_id(dacp_id, dacp_server.dacp_id) && dacp_server.active_remote_id) {
++    dacp_server.connection_family = AF_INET;
++    dacp_server.scope_id = 0;
++    snprintf(dacp_server.ip_string, sizeof(dacp_server.ip_string), "%s", address);
++    dacp_server.port = port;
++    dacp_server.scan_enable = 1;
++    pthread_cond_signal(&dacp_server_information_cv);
++  }
++  pthread_mutex_unlock(&dacp_server_information_lock);
++}
++
+ void dacp_monitor_port_update_callback(const char *dacp_id, uint16_t port) {
+   pthread_mutex_lock(&dacp_server_information_lock);
+   debug(3,
+@@ -500,7 +519,7 @@
+   if ((dacp_id == NULL) || (dacp_server.dacp_id[0] == '\0')) {
+     warn("dacp_id or dacp_server.dacp_id NULL detected");
+   } else {
+-    if (strcmp(dacp_id, dacp_server.dacp_id) == 0) {
++    if (dacp_same_id(dacp_id, dacp_server.dacp_id)) {
+       dacp_server.port = port;
+       if (port == 0)
+         dacp_server.scan_enable = 0;
+--- a/dacp.h
++++ b/dacp.h
+@@ -32,6 +32,7 @@
+                                                                // longer associated with it.
+ void dacp_monitor_port_update_callback(
+     const char *dacp_id, uint16_t port); // a callback to say the port is no longer in use
++void dacp_monitor_ipv4_endpoint_callback(const char *dacp_id, const char *address, uint16_t port);
+ 
+ int dacp_send_command(const char *command, char **body, size_t *bodysize);
+ int send_simple_dacp_command(const char *command);
+--- a/mdns_avahi.c
++++ b/mdns_avahi.c
+@@ -40,6 +40,7 @@
+ #include "dacp.h"
+ #endif
+ #include <string.h>
++#include "dacp_endpoint.h"
+ 
+ #include <avahi-client/client.h>
+ #include <avahi-client/publish.h>
+@@ -66,6 +67,7 @@
+ 
+ typedef struct {
+   AvahiServiceBrowser *service_browser;
++  AvahiServiceResolver *direct_resolver;
+   char *dacp_id;
+ } dacp_browser_struct;
+ 
+@@ -113,15 +115,19 @@
+     //    char a[AVAHI_ADDRESS_STR_MAX], *t;
+     debug(3, "resolve_callback: Service '%s' of type '%s' in domain '%s':", name, type, domain);
+     if (dbs->dacp_id) {
+-      const char *dacpid = strstr(name, "iTunes_Ctrl_");
++      const char *dacpid = strncmp(name, "iTunes_Ctrl_", 12) == 0 ? name : NULL;
+       if (dacpid) {
+         dacpid += strlen("iTunes_Ctrl_");
+-        while (*dacpid == '0')
+-          dacpid++; // skip any leading zeroes
+-        if (strcmp(dacpid, dbs->dacp_id) == 0) {
++        if (dacp_same_id(dacpid, dbs->dacp_id)) {
+           debug(4, "resolve_callback: client dacp_id \"%s\" dacp port: %u.", dbs->dacp_id, lport);
+ #ifdef CONFIG_DACP_CLIENT
+-          dacp_monitor_port_update_callback(dacpid, lport);
++          if (address && address->proto == AVAHI_PROTO_INET) {
++            char ipv4[AVAHI_ADDRESS_STR_MAX];
++            avahi_address_snprint(ipv4, sizeof(ipv4), address);
++            dacp_monitor_ipv4_endpoint_callback(dacpid, ipv4, lport);
++          } else {
++            dacp_monitor_port_update_callback(dacpid, lport);
++          }
+ #endif
+ #ifdef CONFIG_METADATA
+           char port_in_chars[16];
+@@ -136,6 +142,7 @@
+   }
+   }
+   // debug(1,"service resolver freed by resolve_callback");
++  if (dbs->direct_resolver == r) dbs->direct_resolver = NULL;
+   avahi_service_resolver_free(r);
+ }
+ 
+@@ -167,12 +174,10 @@
+   case AVAHI_BROWSER_REMOVE:
+     debug(3, "(Browser) REMOVE: service '%s' of type '%s' in domain '%s'.", name, type, domain);
+     dacp_browser_struct *dbs = (dacp_browser_struct *)userdata;
+-    const char *dacpid = strstr(name, "iTunes_Ctrl_");
++    const char *dacpid = strncmp(name, "iTunes_Ctrl_", 12) == 0 ? name : NULL;
+     if (dacpid) {
+       dacpid += strlen("iTunes_Ctrl_");
+-      while (*dacpid == '0')
+-        dacpid++; // skip any leading zeroes
+-      if ((dbs->dacp_id) && (strcmp(dacpid, dbs->dacp_id) == 0)) {
++      if ((dbs->dacp_id) && dacp_same_id(dacpid, dbs->dacp_id)) {
+ #ifdef CONFIG_DACP_CLIENT
+         dacp_monitor_port_update_callback(dbs->dacp_id, 0); // say the port is withdrawn
+ #endif
+@@ -390,6 +395,10 @@
+         // it seems that the avahi_threaded_poll thread is still running and locked here
+         deregister_service(c); // delete the group
+         dacp_browser_struct *dbs = &private_dbs;
++        if (dbs->direct_resolver) {
++          avahi_service_resolver_free(dbs->direct_resolver);
++          dbs->direct_resolver = NULL;
++        }
+         if (dbs->service_browser) {
+           int rc = avahi_service_browser_free(dbs->service_browser); // delete the service browser
+           if (rc != 0)
+@@ -571,40 +580,30 @@
+ }
+ 
+ void avahi_dacp_monitor_set_id(const char *dacp_id) {
+-  // debug(1, "avahi_dacp_monitor_set_id: Search for DACP ID \"%s\".", t);
+   dacp_browser_struct *dbs = &private_dbs;
+-
+-  if (((dbs->dacp_id) && (dacp_id) && (strcmp(dbs->dacp_id, dacp_id) == 0)) ||
+-      ((dbs->dacp_id == NULL) && (dacp_id == NULL))) {
+-    debug(3, "no change...");
+-  } else {
+-    if (dbs->dacp_id)
+-      free(dbs->dacp_id);
+-    if (dacp_id == NULL)
+-      dbs->dacp_id = NULL;
+-    else {
+-      char *t = strdup(dacp_id);
+-      if (t) {
+-        dbs->dacp_id = t;
+-        pthread_avahi_threaded_poll_lock_and_push(tpoll);
+-        // avahi_threaded_poll_lock(tpoll);
+-        if (dbs->service_browser)
+-          avahi_service_browser_free(dbs->service_browser);
+-
+-        if (!(dbs->service_browser =
+-                  avahi_service_browser_new(client, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC,
+-                                            "_dacp._tcp", NULL, 0, browse_callback, (void *)dbs))) {
+-          warn("failed to create avahi service browser: %s\n",
+-               avahi_strerror(avahi_client_errno(client)));
+-        }
+-        pthread_cleanup_pop(1); // unlock the avahi_threaded_poll_lock
+-        // avahi_threaded_poll_unlock(tpoll);
+-        debug(2, "dacp_monitor for \"%s\"", dacp_id);
+-      } else {
+-        warn("avahi_dacp_set_id: can not allocate a dacp_id string in dacp_browser_struct.");
+-      }
+-    }
+-  }
++  char service[29];
++  if (dacp_id && !dacp_service_name(dacp_id, service, sizeof(service))) return;
++  pthread_avahi_threaded_poll_lock_and_push(tpoll);
++  if (!dacp_same_id(dbs->dacp_id, dacp_id)) {
++    if (dbs->direct_resolver) avahi_service_resolver_free(dbs->direct_resolver);
++    dbs->direct_resolver = NULL;
++    if (dbs->service_browser) avahi_service_browser_free(dbs->service_browser);
++    dbs->service_browser = NULL;
++    free(dbs->dacp_id);
++    dbs->dacp_id = dacp_id ? strdup(dacp_id) : NULL;
++  }
++  if (dbs->dacp_id && !dbs->service_browser)
++    dbs->service_browser = avahi_service_browser_new(client, AVAHI_IF_UNSPEC,
++        AVAHI_PROTO_UNSPEC, "_dacp._tcp", NULL, 0, browse_callback, dbs);
++  // Some senders answer an exact SRV query but do not enumerate their DACP
++  // service through PTR browsing. Resolve only this session's ID over IPv4.
++  // A completed/failed resolver is retried by the existing missing-port poll.
++  if (dbs->dacp_id && !dbs->direct_resolver) {
++    dbs->direct_resolver = avahi_service_resolver_new(client, AVAHI_IF_UNSPEC,
++        AVAHI_PROTO_INET, service, "_dacp._tcp", "local", AVAHI_PROTO_INET,
++        0, resolve_callback, dbs);
++  }
++  pthread_cleanup_pop(1);
+ }
+ 
+ void avahi_dacp_monitor_stop() {
+@@ -613,6 +612,10 @@
+   // stop and dispose of everything
+   pthread_avahi_threaded_poll_lock_and_push(tpoll);
+   // avahi_threaded_poll_lock(tpoll);
++  if (dbs->direct_resolver) {
++    avahi_service_resolver_free(dbs->direct_resolver);
++    dbs->direct_resolver = NULL;
++  }
+   if (dbs->service_browser) {
+     avahi_service_browser_free(dbs->service_browser);
+     dbs->service_browser = NULL;
+--- /dev/null
++++ b/dacp_endpoint.h
+@@ -0,0 +1,37 @@
++/* Exact-session DACP DNS-SD identity helpers. No peer scan or stored endpoint. */
++#pragma once
++#include <arpa/inet.h>
++#include <ctype.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++
++static inline int dacp_service_name(const char *id, char *out, size_t capacity) {
++  if (!id || !*id || strlen(id) > 16 || capacity < 29) return 0;
++  char canonical[17];
++  memset(canonical, '0', 16); canonical[16] = 0;
++  size_t length = strlen(id);
++  for (size_t i = 0; i < length; i++) {
++    unsigned char c = (unsigned char)id[i];
++    if (!isxdigit(c)) return 0;
++    canonical[16-length+i] = (char)toupper(c);
++  }
++  return snprintf(out, capacity, "iTunes_Ctrl_%s", canonical) == 28;
++}
++
++static inline int dacp_same_id(const char *a, const char *b) {
++  char left[29], right[29];
++  return dacp_service_name(a, left, sizeof left) &&
++      dacp_service_name(b, right, sizeof right) && strcmp(left, right) == 0;
++}
++
++static inline int dacp_service_matches(const char *name, const char *id) {
++  return name && strncmp(name, "iTunes_Ctrl_", 12) == 0 && dacp_same_id(name+12, id);
++}
++
++static inline int dacp_unicast_ipv4(const char *address, uint16_t port) {
++  struct in_addr parsed;
++  if (!port || !address || inet_pton(AF_INET, address, &parsed) != 1) return 0;
++  uint32_t value = ntohl(parsed.s_addr);
++  return (value >> 24) != 0 && (value >> 24) != 127 && (value >> 24) < 224;
++}
+--- a/dbus/dbus-service.c
++++ b/dbus/dbus-service.c
+@@ -68,6 +68,28 @@
+     return TRUE;
+   }
+   shairport_sync_complete_set_stream_gain(skeleton, invocation);
++  return TRUE;
++}
++
++// RemoteControl.Available describes classic DACP only. Modern AirPlay 2 already
++// has upstream command/volume transport over the paired event channel. Report
++// the actual live channel, not merely the compiled protocol or stream Active.
++static gboolean on_handle_get_control_status(ShairportSync *skeleton,
++    GDBusMethodInvocation *invocation, __attribute__((unused)) gpointer user_data) {
++  gboolean available = FALSE;
++  char client[INET6_ADDRSTRLEN] = "";
++#ifdef CONFIG_AIRPLAY_2
++  pthread_rwlock_rdlock(&principal_conn_lock);
++  if (principal_conn && principal_conn->airplay_type == ap_2) {
++    pthread_mutex_lock(&principal_conn->event_sender_mutex);
++    available = principal_conn->event_channel_fd > 0;
++    if (available)
++      snprintf(client, sizeof(client), "%s", principal_conn->client_ip_string);
++    pthread_mutex_unlock(&principal_conn->event_sender_mutex);
++  }
++  pthread_rwlock_unlock(&principal_conn_lock);
++#endif
++  shairport_sync_complete_get_control_status(skeleton, invocation, 1, available, client);
+   return TRUE;
+ }
+ 
+@@ -1151,6 +1173,8 @@
+   g_signal_connect(shairportSyncSkeleton, "handle-quit", G_CALLBACK(on_handle_quit), NULL);
+   g_signal_connect(shairportSyncSkeleton, "handle-set-stream-gain",
+                    G_CALLBACK(on_handle_set_stream_gain), NULL);
++  g_signal_connect(shairportSyncSkeleton, "handle-get-control-status",
++                   G_CALLBACK(on_handle_get_control_status), NULL);
+ 
+   g_signal_connect(shairportSyncSkeleton, "handle-remote-command",
+                    G_CALLBACK(on_handle_remote_command), NULL);
+--- a/dbus/org.gnome.ShairportSync.xml
++++ b/dbus/org.gnome.ShairportSync.xml
+@@ -5,6 +5,11 @@
+     <method name="SetStreamGain">
+       <arg name="percent" type="u" direction="in" />
+       <arg name="lease_ms" type="u" direction="in" />
++    </method>
++    <method name="GetControlStatus">
++      <arg name="version" type="u" direction="out" />
++      <arg name="modern_available" type="b" direction="out" />
++      <arg name="client" type="s" direction="out" />
+     </method>
+     <property name='Active' type='b' access='read'/>
+     <property name="DisableStandbyMode" type="s" access="readwrite" />

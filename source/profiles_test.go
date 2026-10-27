@@ -194,3 +194,42 @@ func TestPlumSharedOptInWithReportedClock(t *testing.T) {
 		t.Fatal("shared mode must not bypass the model guard")
 	}
 }
+
+func TestControlsDoNotSilentlyLoseTheirLoopToUpstreamDisplay(t *testing.T) {
+	clock := yamDevice{Model: "yandexplum", Features: []string{"display.clock.segment.v1"}}
+	upstream, ok := profileForDevice(clock, false)
+	if !ok || !upstream.ui {
+		t.Fatal("missing upstream display mode")
+	}
+	if err := validateControlRenderer(upstream, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateControlRenderer(upstream, &controlsConfig{}); err == nil || !strings.Contains(err.Error(), "--shared-audio") {
+		t.Fatalf("display and controls were combined: %v", err)
+	}
+	audioOnly, ok := profileForDevice(clock, true)
+	if !ok || audioOnly.ui {
+		t.Fatal("explicit shared mode retained upstream renderer")
+	}
+	if err := validateControlRenderer(audioOnly, &controlsConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"yandexmini_2", "yandexstation_2", "yandexmicro"} {
+		p, ok := profileFor(model)
+		if !ok {
+			t.Fatal(model)
+		}
+		if err := validateControlRenderer(p, &controlsConfig{}); err != nil {
+			t.Fatal(model, err)
+		}
+	}
+	for _, model := range []string{"yandexmidi", "yandexmini_3_pro", "yandexmini", "YandexStationMini"} {
+		p, ok := profileFor(model)
+		if !ok {
+			t.Fatal(model)
+		}
+		if err := validateControlRenderer(p, &controlsConfig{}); err == nil {
+			t.Fatal("unsupported controls enabled", model)
+		}
+	}
+}

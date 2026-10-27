@@ -55,7 +55,19 @@ func newYAMAPI() (*yamAPI, error) {
 	if err != nil || u.Scheme != "http" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1" && !ownAddress(u.Hostname())) {
 		return nil, errors.New("YAM_API_URL must be a loopback or own-interface HTTP address")
 	}
-	return &yamAPI{base: strings.TrimRight(raw, "/"), token: token, client: &http.Client{Timeout: 1200 * time.Millisecond}}, nil
+	// Authenticated traffic is local even when BetterYAM binds its LAN IP.
+	// Never route it through an environment proxy or follow a redirect with
+	// the custom X-YAM-Token header to a different endpoint.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	client := &http.Client{
+		Timeout:   1200 * time.Millisecond,
+		Transport: transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	return &yamAPI{base: strings.TrimRight(raw, "/"), token: token, client: client}, nil
 }
 
 // ownAddress: BetterYAM binds only the LAN address and passes it as
@@ -77,6 +89,9 @@ func ownAddress(host string) bool {
 	return false
 }
 func (a *yamAPI) request(method, path string, payload interface{}, dest interface{}) error {
+	return a.requestContext(context.Background(), method, path, payload, dest)
+}
+func (a *yamAPI) requestContext(ctx context.Context, method, path string, payload interface{}, dest interface{}) error {
 	var body io.Reader
 	if payload != nil {
 		j, e := json.Marshal(payload)
@@ -85,7 +100,7 @@ func (a *yamAPI) request(method, path string, payload interface{}, dest interfac
 		}
 		body = bytes.NewReader(j)
 	}
-	req, e := http.NewRequest(method, a.base+path, body)
+	req, e := http.NewRequestWithContext(ctx, method, a.base+path, body)
 	if e != nil {
 		return e
 	}
@@ -1151,6 +1166,7 @@ func main() {
 	// Packaged programs use an explicit loader; keep private libc off stock children.
 	_ = os.Unsetenv("LD_LIBRARY_PATH")
 	sharedAudio := flag.Bool("shared-audio", false, "use audio-only shared PCM on supported Plum devices; keep Alice running")
+	controlsPath := flag.String("controls-config", "", "opt-in shared controls JSON (requires media-enabled YAM and receiver)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -1166,7 +1182,12 @@ func main() {
 	// yamd 0.1.x does not set a parent-death signal on binary plugins. Retire
 	// this service if its owning daemon disappears, before a replacement starts.
 	go watchParent(ctx, cancel, os.Getppid(), os.Getppid)
-	if e := run(ctx, *sharedAudio); e != nil {
+	controls, err := loadControls(*controlsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "controls configuration:", err)
+		os.Exit(1)
+	}
+	if e := runWithControls(ctx, *sharedAudio, controls); e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)
 		os.Exit(1)
 	}

@@ -26,3 +26,21 @@ archive with the `build-runtime.sh` options, cross-compiled by zig cc0.16 for
 `arm-linux-gnueabihf` (glibc symbols <=2.34, no RUNPATH, `-ffile-prefix-map`).
 They load the packaged `libdbus-1`/`libexpat`/libc. `build-runtime.sh` rebuilds
 them with the GCC sysroot.
+
+## Shared controls runtime (proposed)
+
+The controls PR adds an ARMhf Shairport Sync 5.6.2 receiver built from the pinned
+archive in this directory with the published HomePod, Mbed TLS and shared-controls
+patches in `support/`. `controls-runtime-build.json` records the exact build inputs
+and its experimental status. `scripts/build-controls-runtime.sh` rebuilds it;
+`scripts/collect-runtime.py` stages only missing public ELF dependencies and
+`scripts/matching-resolver.py` checks the packaged libc SHA before adding its
+matching resolver.
+
+The ten added ARMhf libraries (avahi-client, blkid, config, mount, pcre2-8, popt,
+resolv, selinux, sodium, uuid) are the reviewed Debian buster set that matches the
+upstream avahi-common/core ABI; their notices are under
+`LICENSES/controls-runtime`. The upstream D-Bus, Avahi and Expat binaries are
+unchanged by this PR. ARM64 controls remain unqualified, and the LGPL static-link
+corresponding-source/relink kit for new dependencies is a separate publication
+gate, not implied by this review build.

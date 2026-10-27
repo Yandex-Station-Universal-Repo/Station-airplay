@@ -32,6 +32,10 @@ jobs:
         run: |
           go test -count=1 ./...
           go vet ./...
+      - name: Control wire and gain policy regression tests
+        run: |
+          (cd source && go test -race -count=1 ./...)
+          python3 tests/test_stream_gain.py
       - name: Host migration and namespace checks
         run: |
           python3 tests/test_host_migration.py
