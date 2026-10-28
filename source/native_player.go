@@ -25,6 +25,7 @@ const quasarCLIPath = "/system/vendor/quasar/q"
 // substitute a counter for the real SDK session.
 type nativePauser interface {
 	Pause(context.Context) error
+	PauseNow() error
 	Stop()
 }
 
@@ -49,6 +50,20 @@ func (n *nativePlayer) Pause(ctx context.Context) error {
 		n.sess = s
 	}
 	return n.sess.pause(ctx)
+}
+
+// PauseNow enqueues the same explicit pause input without waiting for the SDK
+// acknowledgement. The handover cadence uses it so a refresh never stalls the
+// control loop on the 300 ms acknowledgement wait; the input itself is still
+// written before returning.
+func (n *nativePlayer) PauseNow() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.sess == nil {
+		return nil
+	}
+	_, err := io.WriteString(n.sess.in, "o")
+	return err
 }
 
 func (n *nativePlayer) Stop() {

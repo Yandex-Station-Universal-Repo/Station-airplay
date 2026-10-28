@@ -2,14 +2,24 @@ package main
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-type mockPauser struct{ pauses, stops int }
+type mockPauser struct {
+	pauses atomic.Int64
+	nows   atomic.Int64
+	stops  atomic.Int64
+}
 
-func (m *mockPauser) Pause(context.Context) error { m.pauses++; return nil }
-func (m *mockPauser) Stop()                       { m.stops++ }
+func (m *mockPauser) Pause(context.Context) error { m.pauses.Add(1); return nil }
+func (m *mockPauser) PauseNow() error             { m.nows.Add(1); return nil }
+func (m *mockPauser) Stop()                       { m.stops.Add(1) }
+
+func (m *mockPauser) pauseCount() int64    { return m.pauses.Load() }
+func (m *mockPauser) pauseNowCount() int64 { return m.nows.Load() }
+func (m *mockPauser) stopCount() int64     { return m.stops.Load() }
 
 // A voice "continue"/"next" must not leave Alice's own player running next to
 // AirPlay: arm a bounded handover, pause only while she is freshly idle, and
@@ -24,7 +34,7 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 	if err := c.tick(ctx, now); err != nil {
 		t.Fatal(err)
 	}
-	baselineStops := p.stops
+	baselineStops := p.stopCount()
 	// Idle snapshot first, then the final recognition that carries the phrase.
 	_ = c.speech(ctx, speechEvent{Phase: "idle", RequestID: "s1"}, now)
 	_ = c.speech(ctx, speechEvent{Phase: "recognition", RequestID: "s1", Final: true, Transcript: "продолжи"}, now)
@@ -38,7 +48,7 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 	if err := c.tick(ctx, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauses != 0 {
+	if p.pauseCount() != 0 {
 		t.Fatal("paused native player while Alice was busy")
 	}
 	// She is idle now, so the handover pauses the resumed native music.
@@ -47,28 +57,28 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 	if err := c.tick(ctx, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauses != 1 {
-		t.Fatalf("handover did not pause native player: %d", p.pauses)
+	if p.pauseCount() != 1 {
+		t.Fatalf("handover did not pause native player: %d", p.pauseCount())
 	}
 	// Keep catching a late resume, but rate-limited.
 	_ = c.tick(ctx, now.Add(2100*time.Millisecond))
-	if p.pauses != 1 {
+	if p.pauseCount() != 1 {
 		t.Fatal("handover was not rate-limited")
 	}
 	_ = c.tick(ctx, now.Add(3*time.Second))
-	if p.pauses != 2 {
+	if p.pauseCount() != 2 {
 		t.Fatal("late native resume was not caught")
 	}
 	// Expiry ends the session; no stray CLI and no further input.
 	_ = c.tick(ctx, now.Add(15*time.Second))
-	if p.stops <= baselineStops {
+	if p.stopCount() <= baselineStops {
 		t.Fatal("handover session not released")
 	}
 	if !c.nativeArmUntil.IsZero() {
 		t.Fatal("handover window not cleared")
 	}
 	_ = c.tick(ctx, now.Add(16*time.Second))
-	if p.pauses != 2 {
+	if p.pauseCount() != 2 {
 		t.Fatal("handover ran after expiry")
 	}
 }
@@ -94,8 +104,8 @@ func TestNativeHandoverCatchesLateResume(t *testing.T) {
 	if err := c.tick(ctx, now.Add(5*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauses != 1 {
-		t.Fatalf("late native resume was not paused: %d", p.pauses)
+	if p.pauseCount() != 1 {
+		t.Fatalf("late native resume was not paused: %d", p.pauseCount())
 	}
 }
 
@@ -115,7 +125,7 @@ func TestNativeHandoverIgnoresPauseCommand(t *testing.T) {
 		t.Fatal("pause must not arm native handover")
 	}
 	_ = c.tick(ctx, now.Add(time.Second))
-	if p.pauses != 0 {
+	if p.pauseCount() != 0 {
 		t.Fatal("native player paused by a stop command")
 	}
 }
@@ -132,12 +142,19 @@ func TestNativeHandoverReleasedOnSenderChange(t *testing.T) {
 	if c.nativeArmUntil.IsZero() {
 		t.Fatal("next did not arm handover")
 	}
-	r.s.Client = "other-sender"
+	// Let the handover open its SDK session, then change the sender.
+	c.aliceIdle = true
+	c.speechFreshUntil = now.Add(time.Minute)
 	_ = c.tick(ctx, now.Add(time.Second))
+	if p.pauseCount() != 1 {
+		t.Fatalf("handover did not start: pauses=%d", p.pauseCount())
+	}
+	r.s.Client = "other-sender"
+	_ = c.tick(ctx, now.Add(2*time.Second))
 	if !c.nativeArmUntil.IsZero() {
 		t.Fatal("handover survived sender change")
 	}
-	if p.stops == 0 {
+	if p.stopCount() == 0 {
 		t.Fatal("session not stopped on sender change")
 	}
 }

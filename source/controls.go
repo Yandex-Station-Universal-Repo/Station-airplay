@@ -21,6 +21,7 @@ type controlsConfig struct {
 	LEDs         bool         `json:"leds"`
 	LEDLevel     uint8        `json:"led_level,omitempty"`
 	NativePlayer bool         `json:"native_player,omitempty"`
+	AliceButton  bool         `json:"alice_button,omitempty"`
 	Group        *groupConfig `json:"group,omitempty"`
 }
 
@@ -59,6 +60,7 @@ func loadControlsOptional(path string) (*controlsConfig, error) {
 type receiverState struct {
 	Active, Available bool
 	Client            string
+	PlayerState       string
 	DB                float64
 }
 type speechEvent struct {
@@ -213,8 +215,12 @@ type sharedController struct {
 	seen                        map[string]time.Time
 	broadcast                   func(context.Context, int) error
 	native                      nativePauser
+	nativeLive                  bool
 	nativeArmUntil              time.Time
 	nativeNextAt                time.Time
+	buttonPauseUntil            time.Time
+	buttonCadence               time.Duration
+	buttonSupp                  *buttonSuppression
 }
 
 func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.Time) error {
@@ -312,6 +318,106 @@ func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.T
 	return nil
 }
 
+// button handles one short Alice-button press. It acts only while a sender owns
+// the AirPlay session and Alice is not in a conversation, so the stock button
+// keeps its meaning everywhere else. The stock short press reaches Quasar's own
+// player first; a bounded native pause keeps that player from resuming next to
+// AirPlay without grabbing or remapping the keypad.
+func (c *sharedController) button(ctx context.Context, now time.Time) error {
+	if !c.cfg.AliceButton {
+		return nil
+	}
+	if !c.cfg.NativePlayer || c.native == nil {
+		return errors.New("Alice button requires the native player handover")
+	}
+	s, err := c.receiver.State(ctx)
+	if err != nil {
+		return err
+	}
+	if s.Client == "" || !s.Available {
+		return nil // no AirPlay session: the firmware owns the button
+	}
+	if !c.aliceIdle && now.Before(c.speechFreshUntil) {
+		return nil // listening, speaking or a fresh dialogue owns the button
+	}
+	var nativeErr error
+	if nativeErr = c.native.Pause(ctx); nativeErr != nil {
+		c.releaseNative()
+	} else {
+		c.nativeLive = true
+		c.startButtonSuppression(ctx, now.Add(aliceButtonPauseHold))
+	}
+	playing := s.Active
+	switch s.PlayerState {
+	case "Playing":
+		playing = true
+	case "Paused", "Stopped":
+		playing = false
+	}
+	command := "Play"
+	if playing {
+		command = "Pause"
+	}
+	return errors.Join(nativeErr, c.receiver.Command(ctx, command))
+}
+
+// buttonSuppression is the bounded cadence that keeps Quasar's own player
+// paused after a short Alice-button press. It runs off the 500 ms control loop
+// so the sender toggle is not delayed and Alice's player cannot resume between
+// ticks; every refresh is a non-blocking write.
+type buttonSuppression struct {
+	stop chan struct{}
+	done chan struct{}
+}
+
+func (c *sharedController) startButtonSuppression(ctx context.Context, until time.Time) {
+	c.stopButtonSuppression()
+	c.buttonPauseUntil = until
+	s := &buttonSuppression{stop: make(chan struct{}), done: make(chan struct{})}
+	c.buttonSupp = s
+	cadence := c.buttonCadence
+	if cadence <= 0 {
+		cadence = aliceButtonPauseEvery
+	}
+	go func() {
+		defer close(s.done)
+		ticker := time.NewTicker(cadence)
+		defer ticker.Stop()
+		timer := time.NewTimer(time.Until(until))
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-s.stop:
+				return
+			case <-timer.C:
+				return
+			case <-ticker.C:
+				if err := c.native.PauseNow(); err != nil {
+					return
+				}
+			}
+		}
+	}()
+}
+
+// stopButtonSuppression ends the cadence and waits briefly for its goroutine.
+// PauseNow is a non-blocking write, so the wait is effectively immediate.
+func (c *sharedController) stopButtonSuppression() {
+	s := c.buttonSupp
+	c.buttonSupp = nil
+	c.buttonPauseUntil = time.Time{}
+	if s == nil {
+		return
+	}
+	close(s.stop)
+	select {
+	case <-s.done:
+	case <-time.After(time.Second):
+	}
+}
+
 func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	s, err := c.receiver.State(ctx)
 	if err != nil {
@@ -334,7 +440,13 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 		c.seen = nil
 		c.ledSuspended = false
 		c.ledState = ""
-		c.releaseNative()
+		// The button handover is sender-independent and already validated by the
+		// press; keep it until its own bounded window ends.
+		c.nativeArmUntil = time.Time{}
+		c.nativeNextAt = time.Time{}
+		if c.buttonSupp == nil {
+			c.releaseNative()
+		}
 	}
 	if !s.Available || s.Client == "" {
 		// The sender's control channel is gone: a remembered pause must not keep
@@ -343,10 +455,22 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	}
 	wasActive := c.active
 	c.active = s.Active || s.Available && s.Client != "" && now.Before(c.pausedUntil)
+	// The button suppression runs on its own bounded cadence. The control loop
+	// only releases it when the window has elapsed in loop time, so a sender
+	// that reports Paused still keeps the native player suppressed.
+	if c.buttonSupp != nil && !now.Before(c.buttonPauseUntil) {
+		if c.nativeArmUntil.IsZero() {
+			c.releaseNative()
+		} else {
+			c.stopButtonSuppression()
+		}
+	}
 	if !c.active {
 		c.volumeReady = false
 		c.ledSuspended = false
-		c.releaseNative()
+		if c.buttonSupp == nil {
+			c.releaseNative()
+		}
 		if c.cfg.Ducking && !c.duckUntil.IsZero() {
 			c.duckUntil = time.Time{}
 			if err = c.receiver.Gain(ctx, 100, 0); err != nil {
@@ -378,7 +502,11 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	if c.cfg.NativePlayer && c.native != nil && !c.nativeArmUntil.IsZero() {
 		switch {
 		case !now.Before(c.nativeArmUntil):
-			c.releaseNative()
+			c.nativeArmUntil = time.Time{}
+			c.nativeNextAt = time.Time{}
+			if c.buttonSupp == nil {
+				c.releaseNative()
+			}
 		// The bounded window is the freshness proof. Alice's own player can
 		// start several seconds after the utterance, so a stale speech event
 		// must not hide it: aliceIdle already excludes listening/speaking.
@@ -386,6 +514,8 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 			c.nativeNextAt = now.Add(time.Second)
 			if nativeErr = c.native.Pause(ctx); nativeErr != nil {
 				c.releaseNative()
+			} else {
+				c.nativeLive = true
 			}
 		}
 	}
@@ -438,7 +568,9 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 func (c *sharedController) releaseNative() {
 	c.nativeArmUntil = time.Time{}
 	c.nativeNextAt = time.Time{}
-	if c.native != nil {
+	c.stopButtonSuppression()
+	if c.native != nil && c.nativeLive {
+		c.nativeLive = false
 		c.native.Stop()
 	}
 }
