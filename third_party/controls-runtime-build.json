@@ -3,9 +3,9 @@
   "receiver_version": "Shairport Sync5.6.2 AirPlay2 smi11 MbedTLS metadata D-Bus",
   "new_control_receiver_abi": "armhf",
   "aarch64_control_receiver_qualified": false,
-  "native_receiver_sha256": "a6168b492a0e26c84d14ee41f4e4c3151dd7838dc9740b5ddb5df6eefe3c92b0",
-  "previous_native_receiver_sha256": "3e37658104520b4d95c3811bd005fe2b64aa70ceab5bae5cba2e6018420c726b",
-  "receiver_rebuild_note": "Shipped rebuild with support/dacp-ipv4-discovery.patch; the earlier binary was built without it and has the same NEEDED list.",
+  "native_receiver_sha256": "e1cab70fefb87dca9cdd63a613d6641289f4719abc85e2f8c256ac65f39e814c",
+  "previous_native_receiver_sha256": "a6168b492a0e26c84d14ee41f4e4c3151dd7838dc9740b5ddb5df6eefe3c92b0",
+  "receiver_rebuild_note": "1.4.14: paired PTP event channel supplies control status and volume before audio SETUP; support/preplay-event-channel.patch on the existing archived runtime source.",
   "patch_sha256": "e687520f89c4f60ddc0137208c1b5e1c750d57c96efd88dee31e2055306b2bfd",
   "dacp_patch_sha256": "4a2b4e5003cacad2061562ac518b4617ccf81e7b6db1b20ced3be6fb192fc51f",
   "source_archives": {
@@ -31,5 +31,6 @@
   "public_corresponding_source_relink_audit": "PENDING: do not publicly redistribute candidate binaries before this gate",
   "device_deployment": false,
   "live_speaker_logs_read": false,
-  "audio_generated": false
+  "audio_generated": false,
+  "preplay_patch_sha256": "1a2c0444758082b75dd757dec12d4aca44b3c93c65c7b87e547434b7d90685a2"
 }

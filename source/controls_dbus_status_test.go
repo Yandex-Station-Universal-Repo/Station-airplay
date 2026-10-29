@@ -12,8 +12,8 @@ import (
 )
 
 // The upstream Available property is DACP-specific. A modern AirPlay 2 sender
-// must only become controllable when the receiver confirms its live event
-// channel for the same client; mismatched or failed status stays unavailable.
+// must only become connected when the receiver confirms its live event
+// channel. Its principal client wins over retained classic metadata.
 type mockStatusService struct {
 	modern bool
 	client string
@@ -47,21 +47,24 @@ func TestModernStatusRequiresLiveExactClient(t *testing.T) {
 		t.Fatal(e)
 	}
 	path := dbus.ObjectPath("/org/gnome/ShairportSync")
-	if _, e = prop.Export(server, path, prop.Map{
+	properties, e := prop.Export(server, path, prop.Map{
 		receiverBusName: {"Active": {Value: true}},
 		remoteInterface: {"Available": {Value: false}, "Client": {Value: "fe80::1"}, "AirplayVolume": {Value: float64(-12)}},
-	}); e != nil {
+	})
+	if e != nil {
 		t.Fatal(e)
 	}
 	for _, test := range []struct {
-		name   string
-		modern bool
-		client string
-		want   bool
+		name      string
+		modern    bool
+		client    string
+		want      bool
+		connected bool
 	}{
-		{"live exact client", true, "fe80::1", true},
-		{"channel closed", false, "fe80::1", false},
-		{"different client", true, "fe80::2", false},
+		{"live exact client", true, "fe80::1", true, true},
+		{"channel closed", false, "fe80::1", false, false},
+		{"principal client replaces stale metadata", true, "fe80::2", true, true},
+		{"empty client is not a session", true, "", false, false},
 	} {
 		if e = server.Export(&mockStatusService{test.modern, test.client}, path, receiverBusName); e != nil {
 			t.Fatal(e)
@@ -72,8 +75,27 @@ func TestModernStatusRequiresLiveExactClient(t *testing.T) {
 		}
 		state, e := r.State(context.Background())
 		r.conn.Close()
-		if e != nil || state.Available != test.want {
+		if e != nil || state.Available != test.want || state.Connected != test.connected {
 			t.Fatalf("%s: available=%v err=%v", test.name, state.Available, e)
 		}
+		if test.connected && state.Client != test.client {
+			t.Fatal("retained classic client overrode the principal event connection")
+		}
+	}
+	// Attaching an output precedes audio and classic Client publication.
+	properties.SetMust(receiverBusName, "Active", false)
+	properties.SetMust(remoteInterface, "Client", "")
+	properties.SetMust(remoteInterface, "Available", true)
+	if e = server.Export(&mockStatusService{true, "192.0.2.10"}, path, receiverBusName); e != nil {
+		t.Fatal(e)
+	}
+	r, e := openReceiver(socket)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer r.conn.Close()
+	state, e := r.State(context.Background())
+	if e != nil || state.Active || !state.Connected || state.Client != "192.0.2.10" {
+		t.Fatalf("pre-play connection was lost: %+v %v", state, e)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ const quasarCLIPath = "/system/vendor/quasar/q"
 // substitute a counter for the real SDK session.
 type nativePauser interface {
 	Pause(context.Context) error
+	PauseNow() error
 	Stop()
 }
 
@@ -44,17 +46,39 @@ func (n *nativePlayer) Pause(ctx context.Context) error {
 	if n.sess == nil {
 		s, err := startCLI(ctx, n.path)
 		if err != nil {
+			aliceButtonDebug("pause: CLI unavailable: %v", err)
 			return err
 		}
 		n.sess = s
 	}
-	return n.sess.pause(ctx)
+	err := n.sess.pause(ctx)
+	aliceButtonDebug("pause: sent Player Pause err=%v", err)
+	return err
+}
+
+// PauseNow enqueues the same explicit pause input without waiting for the SDK
+// acknowledgement. The handover cadence uses it so a refresh never stalls the
+// control loop on the 300 ms acknowledgement wait; the input itself is still
+// written before returning.
+func (n *nativePlayer) PauseNow() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.sess == nil {
+		aliceButtonDebug("pause-now: no CLI session")
+		return nil
+	}
+	_, err := io.WriteString(n.sess.in, "o")
+	if err != nil {
+		aliceButtonDebug("pause-now: write failed: %v", err)
+	}
+	return err
 }
 
 func (n *nativePlayer) Stop() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.sess != nil {
+		aliceButtonDebug("stop: closing CLI")
 		n.sess.stop()
 		n.sess = nil
 	}
@@ -70,11 +94,30 @@ type cliSession struct {
 	stopOnce  sync.Once
 }
 
+// stockCLIEnv removes the package library overrides so the stock shell script
+// and its loader use the system runtime. Everything else is inherited.
+func stockCLIEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, v := range env {
+		if strings.HasPrefix(v, "LD_LIBRARY_PATH=") || strings.HasPrefix(v, "LD_PRELOAD=") {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
 func startCLI(ctx context.Context, path string) (*cliSession, error) {
 	if path == "" {
 		return nil, errors.New("stock Quasar CLI path is empty")
 	}
 	cmd := exec.Command(path, "cli")
+	// The service inherits the package's bundled LD_LIBRARY_PATH (a newer glibc
+	// for shairport and avahi). The stock CLI is a shell script, so /bin/sh
+	// would load that glibc and fail before the script can select Quasar's own
+	// libraries. Run it with the system environment, like aplay in the pipe
+	// backend; the script sets LD_LIBRARY_PATH for maind itself.
+	cmd.Env = stockCLIEnv(os.Environ())
 	// Own process group: a wedged CLI is terminated with its helpers, never
 	// left behind after the handover.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

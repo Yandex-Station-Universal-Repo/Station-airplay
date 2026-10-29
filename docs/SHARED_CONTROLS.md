@@ -146,3 +146,37 @@ single-architecture preparation recipe above is included for reviewer reproducti
 but has not yet been rebuilt from a pristine base image. Exact dependency source
 pinning/relink material, clean-image reproduction and hardware qualification are
 publication gates, not completed tests.
+
+## Volume handoff (1.4.12)
+
+With native_volume enabled, a newly active AirPlay session inherits the current
+station level. The service sends that level to the same live sender and waits
+up to 3 seconds for acknowledgement; it never applies stale remembered phone
+volume to Alice during this handover. A missing control channel defers the
+handover without changing native volume. Afterwards existing bidirectional
+phone/station synchronization applies. Disconnect and service stop do not
+restore an earlier level: Alice retains the final native level used for AirPlay.
+
+This is control-level synchronization, not a claim of measured loudness equality
+between sources or an atomic audio/volume transaction before the first sample.
+Live sender acknowledgement, reconnect and multiroom behaviour require hardware
+acceptance separately from mock regression tests.
+
+## Attachment and Station 2 indication (1.4.13)
+
+The existing receiver GetControlStatus method reports its principal AirPlay 2
+connection from initial SETUP, not only an audio play session. Use its live
+event-channel/client identity to handle attachment before RECORD/audio; do not
+infer attachment from retained classic DACP metadata. Volume and LEDs start
+when the receiver reports that live connection, still respecting fresh Alice
+idle and volume-overlay gates. This does not promise zero delay from the iOS UI
+tap: protocol setup, the 500 ms control tick and speech readiness still apply.
+
+Station 2 has a shared 89x1 framebuffer with no verified exclusive ownership
+API. Do not stop platformd or race the stock renderer at a higher frame rate.
+The backend reads current content, skips redundant writes and yields to foreign
+frames, including a foreign clear. Off/shutdown clears only a matching frame
+that this instance painted. It retries after a quiet window; native indication
+has priority. A continuously active vendor animation may keep AirPlay indication
+hidden. This is cooperative contention mitigation, not a proven exclusive
+foreground overlay, and needs live visual acceptance on Station 2.

@@ -68,6 +68,7 @@ if ! grep -q station_set_stream_gain player.c; then patch -p1 < "$ROOT/support/s
 if ! grep -q dacp_monitor_ipv4_endpoint_callback dacp.c; then patch -p1 < "$ROOT/support/dacp-ipv4-discovery.patch"; fi
 if ! grep -q '"general.model"' shairport.c; then patch -p1 < "$ROOT/support/homepod-model.patch"; fi
 if ! grep -q 'cannot derive AirPlay identity' shairport.c; then patch -p1 < "$ROOT/support/mbedtls-ap2.patch"; fi
+if ! grep -q station_event_conn_lock ap2_event_receiver.c; then patch -p1 < "$ROOT/support/preplay-event-channel.patch"; fi
 autoreconf -fi > "$out/autoreconf.log" 2>&1
 ./configure --host="$triplet" --with-os=linux --with-alsa --with-metadata --with-avahi \
  --with-ssl=mbedtls --with-airplay-2 --without-soxr --with-dbus-interface \
