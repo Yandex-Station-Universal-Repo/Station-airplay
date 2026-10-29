@@ -212,7 +212,7 @@ func receiverControlConfig(p stationProfile, controls *controlsConfig) string {
 func audioEnv(environ []string, home, bus string) []string {
 	env := []string{}
 	for _, s := range environ {
-		if strings.HasPrefix(s, "YAM_API_") || strings.HasPrefix(s, "LD_LIBRARY_PATH=") || (bus != "" && strings.HasPrefix(s, "DBUS_SYSTEM_BUS_ADDRESS=")) || strings.HasPrefix(s, "HOME=") {
+		if strings.HasPrefix(s, "YAM_API_") || strings.HasPrefix(s, "LUNA_API_") || strings.HasPrefix(s, "LD_LIBRARY_PATH=") || (bus != "" && strings.HasPrefix(s, "DBUS_SYSTEM_BUS_ADDRESS=")) || strings.HasPrefix(s, "HOME=") {
 			continue
 		}
 		env = append(env, s)
