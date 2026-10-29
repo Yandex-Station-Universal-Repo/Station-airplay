@@ -8,6 +8,26 @@ Shairport 5.6.2/AirPlay 2/smi11, with its existing D-Bus DACP interface enabled.
 A short SetStreamGain lease is the only receiver extension: it attenuates stream
 PCM, never Master/Alice or the sender's remembered volume.
 
+## Runtime host authentication (Luna and legacy YAM)
+
+The current Luna host supplies `LUNA_API_URL` and `LUNA_API_TOKEN`. AirPlay
+uses that complete pair and sends **only** `X-Luna-Token`. When neither Luna
+value is set, a complete `YAM_API_URL` / `YAM_API_TOKEN` pair selects the legacy
+host and **only** `X-YAM-Token`.
+
+Incomplete Luna credentials fail closed rather than falling back or combining
+families. If both families are present, their endpoints (ignoring trailing
+slashes) and tokens must agree; matching aliases prefer Luna. No request is
+retried with another authentication header after an error. Both modes keep the
+local/own-interface HTTP check, bypass environment proxies and refuse redirects.
+Both `LUNA_API_*` and `YAM_API_*` are removed from audio/Avahi child environments.
+
+This is runtime API compatibility, **not** completed YAM v2 package support.
+YAM v2 is a separate package manager; it does not supply these runtime credentials
+or replace Luna's speech/LED host. Packaging `.yampkg`, binary-plugin discovery,
+service lifecycle and v2 station-volume dependency resolution are separate work.
+The existing `.yap` and relative controls/dependency layout are unchanged here.
+
 ## Reused components
 
 - station-volume get/set/acknowledgement, with compatibility and firmware guards.
