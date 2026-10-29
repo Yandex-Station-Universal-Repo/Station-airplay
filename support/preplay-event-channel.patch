@@ -1,0 +1,325 @@
+--- a/ap2_event_receiver.c
++++ b/ap2_event_receiver.c
+@@ -35,6 +35,12 @@
+ #include "metadata/core.h"
+ #endif
+ 
++// A paired PTP event channel can be live before the audio SETUP creates
++// principal_conn. Protect this borrowed pointer with a separate lifetime lock;
++// clear it before event cleanup can close the socket or free the connection.
++rtsp_conn_info *station_event_conn = NULL;
++pthread_rwlock_t station_event_conn_lock = PTHREAD_RWLOCK_INITIALIZER;
++
+ // will return -1 if there is an error, the port is not open or the response is not a valid
+ // successful RTSP response, 0 if the port was closed and a positive number if okay
+ ssize_t ap2_event_port_send_message(rtsp_conn_info *conn, char *data, size_t data_length) {
+@@ -157,6 +163,10 @@
+ 
+ void ap2_event_receiver_cleanup_handler(void *arg) {
+   rtsp_conn_info *conn = (rtsp_conn_info *)arg;
++  pthread_rwlock_wrlock(&station_event_conn_lock);
++  if (station_event_conn == conn)
++    station_event_conn = NULL;
++  pthread_rwlock_unlock(&station_event_conn_lock);
+   // debug(1, "Connection %d: AP2 Event Receiver Cleanup start.", conn->connection_number);
+ #ifdef CONFIG_METADATA
+   // this is here to ensure it's only performed once during a teardown of a ptp stream
+@@ -199,6 +209,11 @@
+     pthread_cleanup_push(ap2_event_receiver_cleanup_handler, arg);
+ 
+     ap2_event_send_update_info(conn);
++    if (conn->airplay_stream_category == ptp_stream) {
++      pthread_rwlock_wrlock(&station_event_conn_lock);
++      station_event_conn = conn;
++      pthread_rwlock_unlock(&station_event_conn_lock);
++    }
+ 
+     while (1) {
+       usleep(100000);
+--- a/dbus/dbus-service.c
++++ b/dbus/dbus-service.c
+@@ -74,19 +74,25 @@
+ // RemoteControl.Available describes classic DACP only. Modern AirPlay 2 already
+ // has upstream command/volume transport over the paired event channel. Report
+ // the actual live channel, not merely the compiled protocol or stream Active.
++extern rtsp_conn_info *station_event_conn;
++extern pthread_rwlock_t station_event_conn_lock;
++
+ static gboolean on_handle_get_control_status(ShairportSync *skeleton,
+     GDBusMethodInvocation *invocation, __attribute__((unused)) gpointer user_data) {
+   gboolean available = FALSE;
+   char client[INET6_ADDRSTRLEN] = "";
+ #ifdef CONFIG_AIRPLAY_2
+   pthread_rwlock_rdlock(&principal_conn_lock);
+-  if (principal_conn && principal_conn->airplay_type == ap_2) {
+-    pthread_mutex_lock(&principal_conn->event_sender_mutex);
+-    available = principal_conn->event_channel_fd > 0;
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  rtsp_conn_info *control_conn = principal_conn ? principal_conn : station_event_conn;
++  if (control_conn && control_conn->airplay_type == ap_2) {
++    pthread_mutex_lock(&control_conn->event_sender_mutex);
++    available = control_conn->event_channel_fd > 0;
+     if (available)
+-      snprintf(client, sizeof(client), "%s", principal_conn->client_ip_string);
+-    pthread_mutex_unlock(&principal_conn->event_sender_mutex);
+-  }
++      snprintf(client, sizeof(client), "%s", control_conn->client_ip_string);
++    pthread_mutex_unlock(&control_conn->event_sender_mutex);
++  }
++  pthread_rwlock_unlock(&station_event_conn_lock);
+   pthread_rwlock_unlock(&principal_conn_lock);
+ #endif
+   shairport_sync_complete_get_control_status(skeleton, invocation, 1, available, client);
+--- a/remote/remote.c
++++ b/remote/remote.c
+@@ -27,8 +27,32 @@
+ 
+ #include "remote.h"
+ #include "metadata/hub.h"
++#include "metadata/core.h"
+ #include "player.h"
+ #include "rtsp.h"
++extern rtsp_conn_info *station_event_conn;
++extern pthread_rwlock_t station_event_conn_lock;
++// Callers hold both lifetime locks, including helpers called by remote_command.
++static rtsp_conn_info *station_control_connection(void) {
++  return principal_conn ? principal_conn : station_event_conn;
++}
++void station_control_set_volume(double volume, rtsp_conn_info *conn) {
++  if (conn == principal_conn && conn->player_thread != NULL) {
++    player_volume(volume, conn);
++    return;
++  }
++  pthread_mutex_lock(&conn->volume_control_mutex);
++  config.airplay_volume = volume;
++  conn->own_airplay_volume = volume;
++  conn->own_airplay_volume_set = 1;
++  pthread_mutex_unlock(&conn->volume_control_mutex);
++#ifdef CONFIG_METADATA
++  char payload[96];
++  snprintf(payload, sizeof(payload), "%.6f,0.00,0.00,0.00", volume);
++  send_ssnc_metadata('pvol', payload, strlen(payload), 1);
++#endif
++}
++
+ 
+ // these are indexed by simple_command_t
+ static const char *simple_command_strings[] = {
+@@ -225,7 +249,7 @@
+ /*
+ ssize_t ap2_event_send_dev_mule(unsigned int parameter) {
+   ssize_t result = -1;
+-  rtsp_conn_info *conn = principal_conn;
++  rtsp_conn_info *conn = station_control_connection();
+   if (conn != NULL) {
+     char command_number_string[32];
+     snprintf(command_number_string, sizeof(command_number_string), "%u", 26);
+@@ -255,7 +279,7 @@
+ */
+ ssize_t ap2_event_send_dev_mule(unsigned int repeat_mode) {
+   ssize_t result = -1;
+-  rtsp_conn_info *conn = principal_conn;
++  rtsp_conn_info *conn = station_control_connection();
+   if (conn != NULL) {
+     plist_t modernMediaCommand = plist_new_dict();
+     plist_dict_set_item(modernMediaCommand, "modernMediaRemoteCommand",
+@@ -281,7 +305,7 @@
+ 
+ ssize_t ap2_event_send_set_repeat_mode(unsigned int repeat_mode) {
+   ssize_t result = -1;
+-  rtsp_conn_info *conn = principal_conn;
++  rtsp_conn_info *conn = station_control_connection();
+   if (conn != NULL) {
+     plist_t modernMediaCommand = plist_new_dict();
+     plist_dict_set_item(modernMediaCommand, "modernMediaRemoteCommand",
+@@ -307,7 +331,7 @@
+ 
+ ssize_t ap2_event_send_set_shuffle_mode(unsigned int shuffle_mode) {
+   ssize_t result = -1;
+-  rtsp_conn_info *conn = principal_conn;
++  rtsp_conn_info *conn = station_control_connection();
+   if (conn != NULL) {
+     plist_t modernMediaCommand = plist_new_dict();
+     plist_dict_set_item(modernMediaCommand, "modernMediaRemoteCommand",
+@@ -381,15 +405,17 @@
+ }
+ 
+ void ap2_remote_set_volume(double volume) {
+-  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the principal_conn be changed
++  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the station_control_connection() be changed
+   pthread_cleanup_push(rwlock_unlock, (void *)&principal_conn_lock);
+-  if ((principal_conn != NULL) && (principal_conn->airplay_type == ap_2)) {
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  pthread_cleanup_push(rwlock_unlock, (void *)&station_event_conn_lock);
++  if ((station_control_connection() != NULL) && (station_control_connection()->airplay_type == ap_2)) {
+     debug(4, "remote_set_airplay_volume to %.3f -- AirPlay 2.", volume);
+ 
+     double present_unit_volume = airplayVolumeToUnitVolume(config.airplay_volume);
+     double desired_unit_volume = airplayVolumeToUnitVolume(volume);
+ 
+-    if (principal_conn != NULL) {
++    if (station_control_connection() != NULL) {
+       // It seems that a large change of the notified volume, e.g. from 1.0 to 0.0, evokes
+       // a bug in Apple Music on macOS Tahoe, causing the local (mac) volume to jump.
+       // So here, we notify changes in 0.09 increments with a short delay between them.
+@@ -403,16 +429,17 @@
+           else
+             present_unit_volume -= 0.09;
+         }
+-        ap2_event_send_unit_volume_notification(principal_conn, present_unit_volume);
++        ap2_event_send_unit_volume_notification(station_control_connection(), present_unit_volume);
+         debug(4, "remote_set_airplay_volume set unit volume to %.3f.", present_unit_volume);
+         usleep(10000);
+       }
+-      player_volume(volume, principal_conn);
++      station_control_set_volume(volume, station_control_connection());
+     } else {
+       config.airplay_volume = volume;
+     }
+   }
+-  pthread_cleanup_pop(1); // release the principal_conn lock
++  pthread_cleanup_pop(1); // release the event connection lifetime lock
++  pthread_cleanup_pop(1); // release the station_control_connection() lock
+ }
+ 
+ #endif
+@@ -437,22 +464,25 @@
+   else if (desired_volume > 0.0)
+     desired_volume = 0.0;
+ 
+-  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the principal_conn be changed
++  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the station_control_connection() be changed
+   pthread_cleanup_push(rwlock_unlock, (void *)&principal_conn_lock);
+-  if ((principal_conn != NULL) && (principal_conn->airplay_type == ap_2)) {
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  pthread_cleanup_push(rwlock_unlock, (void *)&station_event_conn_lock);
++  if ((station_control_connection() != NULL) && (station_control_connection()->airplay_type == ap_2)) {
+     debug(4, "remote_increment_volume %s", up == 0 ? "down" : "up");
+ 
+     double desired_unit_volume = airplayVolumeToUnitVolume(desired_volume);
+ 
+-    if (principal_conn != NULL) {
+-      ap2_event_send_unit_volume_notification(principal_conn, desired_unit_volume);
++    if (station_control_connection() != NULL) {
++      ap2_event_send_unit_volume_notification(station_control_connection(), desired_unit_volume);
+       debug(4, "remote_increment_volume set unit volume to %.3f.", desired_unit_volume);
+-      player_volume(desired_volume, principal_conn);
++      station_control_set_volume(desired_volume, station_control_connection());
+     }
+   } else {
+     config.airplay_volume = desired_volume;
+   }
+-  pthread_cleanup_pop(1); // release the principal_conn lock
++  pthread_cleanup_pop(1); // release the event connection lifetime lock
++  pthread_cleanup_pop(1); // release the station_control_connection() lock
+ }
+ #endif
+ 
+@@ -541,10 +571,12 @@
+   }
+ #endif
+ #ifdef CONFIG_AIRPLAY_2
+-  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the principal_conn be changed
++  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the station_control_connection() be changed
+   pthread_cleanup_push(rwlock_unlock, (void *)&principal_conn_lock);
+-  if ((available == 0) && (principal_conn != NULL) && (principal_conn->airplay_type == ap_2)) {
+-    if (principal_conn != NULL) {
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  pthread_cleanup_push(rwlock_unlock, (void *)&station_event_conn_lock);
++  if ((available == 0) && (station_control_connection() != NULL) && (station_control_connection()->airplay_type == ap_2)) {
++    if (station_control_connection() != NULL) {
+       switch (command) {
+       case rcsc_not_a_command: // do nothing...
+         break;
+@@ -559,23 +591,26 @@
+         break;
+       default:
+         debug(4, "remote_simple_command %u -- AirPlay 2.", command);
+-        ap2_event_send_simple_modern_media_remote_command(principal_conn, command);
++        ap2_event_send_simple_modern_media_remote_command(station_control_connection(), command);
+         break;
+       }
+     }
+   }
+-  pthread_cleanup_pop(1); // release the principal_conn lock
++  pthread_cleanup_pop(1); // release the event connection lifetime lock
++  pthread_cleanup_pop(1); // release the station_control_connection() lock
+ #endif
+ }
+ 
+ int remote_set_repeat_mode(repeat_status_type mode) {
+   int handled = 0;
+-  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the principal_conn be changed
++  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the station_control_connection() be changed
+   pthread_cleanup_push(rwlock_unlock, (void *)&principal_conn_lock);
+-  if (principal_conn != NULL) {
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  pthread_cleanup_push(rwlock_unlock, (void *)&station_event_conn_lock);
++  if (station_control_connection() != NULL) {
+     int command_handled_in_airplay_2 = 0;
+ #if CONFIG_AIRPLAY_2
+-    if (principal_conn->airplay_type == ap_2) {
++    if (station_control_connection()->airplay_type == ap_2) {
+       command_handled_in_airplay_2 = 1; // handled even if not successful
+       switch (mode) {
+       case RS_OFF:
+@@ -619,18 +654,21 @@
+     }
+ #endif
+   }
+-  pthread_cleanup_pop(1); // release the principal_conn lock
++  pthread_cleanup_pop(1); // release the event connection lifetime lock
++  pthread_cleanup_pop(1); // release the station_control_connection() lock
+   return handled;
+ }
+ 
+ int remote_set_shuffle_mode(shuffle_status_type mode) {
+   int handled = 1;                             // default
+-  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the principal_conn be changed
++  pthread_rwlock_rdlock(&principal_conn_lock); // don't let the station_control_connection() be changed
+   pthread_cleanup_push(rwlock_unlock, (void *)&principal_conn_lock);
+-  if (principal_conn != NULL) {
++  pthread_rwlock_rdlock(&station_event_conn_lock);
++  pthread_cleanup_push(rwlock_unlock, (void *)&station_event_conn_lock);
++  if (station_control_connection() != NULL) {
+     int command_handled_in_airplay_2 = 0;
+ #if CONFIG_AIRPLAY_2
+-    if (principal_conn->airplay_type == ap_2) {
++    if (station_control_connection()->airplay_type == ap_2) {
+       command_handled_in_airplay_2 = 1; // handled even if not successful
+       switch (mode) {
+       case SS_OFF:
+@@ -666,6 +704,7 @@
+     }
+ #endif
+   }
+-  pthread_cleanup_pop(1); // release the principal_conn lock
++  pthread_cleanup_pop(1); // release the event connection lifetime lock
++  pthread_cleanup_pop(1); // release the station_control_connection() lock
+   return handled;
+ }
+--- a/rtsp.c
++++ b/rtsp.c
+@@ -136,6 +136,10 @@
+ };
+ 
+ rtsp_conn_info *principal_conn = NULL;
++extern rtsp_conn_info *station_event_conn;
++extern pthread_rwlock_t station_event_conn_lock;
++extern void station_control_set_volume(double volume, rtsp_conn_info *conn);
++
+ rtsp_conn_info **conns = NULL;
+ 
+ // always lock this when accessing the principal conn value
+@@ -3233,6 +3237,11 @@
+         player_volume(volume, conn);
+         debug(3, "Connection %d: set player volume to %.3f success.", conn->connection_number,
+               volume);
++      } else if (principal_conn == NULL) {
++        pthread_rwlock_rdlock(&station_event_conn_lock);
++        if (station_event_conn == conn)
++          station_control_set_volume(volume, conn);
++        pthread_rwlock_unlock(&station_event_conn_lock);
+       } else {
+         if (principal_conn != NULL)
+           debug(2, "Connection %d: fail to set player volume to %.3f. Principal conn is %d.",
