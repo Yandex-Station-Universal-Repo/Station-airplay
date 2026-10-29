@@ -10,7 +10,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -59,6 +58,7 @@ func loadControlsOptional(path string) (*controlsConfig, error) {
 
 type receiverState struct {
 	Active, Available bool
+	Connected         bool // receiver-confirmed live AirPlay 2 event channel
 	Client            string
 	PlayerState       string
 	DB                float64
@@ -89,82 +89,6 @@ type controlStation interface {
 // frame instead of a list of per-LED colours.
 type indicationStation interface {
 	Indicate(context.Context, string, uint8) error
-}
-
-// controlLeadIns are polite lead-ins that may precede a transport phrase.
-// They are stripped one token at a time, and only when a complete command
-// remains, so "не ставь паузу" or "расскажи про прошлый трек" stay with Alice.
-var controlLeadIns = map[string]bool{
-	"алиса": true, "пожалуйста": true, "включи": true, "поставь": true,
-	"переключи": true, "верни": true, "давай": true, "мне": true,
-}
-
-// controlPhrases is an exact-match table. It is only consulted while an
-// AirPlay sender owns the session, so broad words such as "хватит" cannot
-// affect Alice outside AirPlay.
-var controlPhrases = map[string]string{
-	// Pause: the sender keeps its position and the indication stays lit.
-	"стоп": "Pause", "стоп музыка": "Pause", "стоп музыку": "Pause",
-	"останови": "Pause", "останови музыку": "Pause", "останови трек": "Pause",
-	"останови песню": "Pause", "пауза": "Pause", "паузу": "Pause",
-	"на паузу": "Pause", "хватит": "Pause", "хватит музыку": "Pause",
-	"хватит музыки": "Pause", "хватит играть": "Pause", "хватит петь": "Pause",
-	"достаточно": "Pause", "достаточно музыки": "Pause", "прекрати": "Pause",
-	"прекрати музыку": "Pause", "прекрати играть": "Pause",
-	"выключи музыку": "Pause", "pause": "Pause",
-	// Play: resume the current sender item.
-	"продолжи": "Play", "продолжи музыку": "Play", "продолжай": "Play",
-	"продолжай музыку": "Play", "возобнови": "Play", "возобнови музыку": "Play",
-	"играй": "Play", "играй музыку": "Play", "включи музыку": "Play",
-	"включи мне музыку": "Play", "play": "Play", "resume": "Play",
-	"continue": "Play",
-	// Next: skip forward inside the sender's queue.
-	"дальше": "Next", "далее": "Next", "следующий": "Next", "следующая": "Next",
-	"следующий трек": "Next", "следующая песня": "Next", "следующую песню": "Next",
-	"следующий трек пожалуйста": "Next", "пропусти": "Next",
-	"пропусти трек": "Next", "пропусти песню": "Next", "next": "Next",
-	"скип": "Next", "скипни": "Next",
-	// Previous: restart or step back inside the sender's queue.
-	"назад": "Previous", "прошлый трек": "Previous", "прошлая песня": "Previous",
-	"прошлую песню": "Previous", "предыдущий": "Previous", "предыдущая": "Previous",
-	"предыдущий трек": "Previous", "предыдущая песня": "Previous",
-	"предыдущую песню": "Previous", "верни трек": "Previous",
-	"верни песню": "Previous", "previous": "Previous", "prev": "Previous",
-	"back": "Previous",
-}
-
-// normalizePhrase lowercases a transcript and turns punctuation into token
-// separators, so "Алиса, прошлый трек!" and "прошлый трек" compare equal.
-func normalizePhrase(phrase string) []string {
-	phrase = strings.ToLower(phrase)
-	phrase = strings.Map(func(r rune) rune {
-		switch r {
-		case ',', '.', '!', '?', ';', ':', '—', '-', '"', '«', '»':
-			return ' '
-		}
-		return r
-	}, phrase)
-	return strings.Fields(phrase)
-}
-
-func controlPhrase(phrase string) string {
-	fields := normalizePhrase(phrase)
-	if command := controlPhrases[strings.Join(fields, " ")]; command != "" {
-		return command
-	}
-	for len(fields) > 1 && controlLeadIns[fields[0]] {
-		fields = fields[1:]
-		if command := controlPhrases[strings.Join(fields, " ")]; command != "" {
-			return command
-		}
-	}
-	for len(fields) > 1 && controlLeadIns[fields[len(fields)-1]] {
-		fields = fields[:len(fields)-1]
-		if command := controlPhrases[strings.Join(fields, " ")]; command != "" {
-			return command
-		}
-	}
-	return ""
 }
 
 func validDB(v float64) bool {
@@ -226,6 +150,7 @@ type sharedController struct {
 func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.Time) error {
 	// Enum names come from the public Quasar AliceState schema. A lost IPC
 	// observer is UNKNOWN, never fabricated IDLE. Gain also expires in receiver.
+	aliceButtonDebug("speech: phase=%q final=%v initial=%v request=%v active=%v", e.Phase, e.Final, e.InitialSnapshot, e.RequestID != "", c.active)
 	switch e.Phase {
 	case "idle":
 		c.aliceIdle = true
@@ -296,11 +221,14 @@ func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.T
 	}
 	c.seen[e.RequestID] = now // don't replay an ambiguous/timed-out remote command.
 	if err = c.station.ClaimSpeech(ctx, e.RequestID); err != nil {
+		aliceButtonDebug("speech: claim failed: %v", err)
 		return err
 	}
-	if err = c.receiver.Command(ctx, command); err != nil {
+	if err = c.voiceCommand(ctx, command); err != nil {
+		aliceButtonDebug("speech: command=%s failed: %v", command, err)
 		return err
 	}
+	aliceButtonDebug("speech: command=%s sent", command)
 	if command == "Pause" {
 		c.pausedUntil = now.Add(30 * time.Minute)
 	} else {
@@ -310,12 +238,50 @@ func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.T
 	}
 	if c.cfg.NativePlayer && c.native != nil && command != "Pause" {
 		// Alice also acts on "continue"/"next" herself and can restart her own
-		// player next to AirPlay. Arm a bounded handover that pauses it as soon
-		// as she is idle again; never while she is listening or speaking.
+		// player next to AirPlay. Pause it immediately (Player Pause never
+		// touches the sender or her speech output) and keep a bounded handover
+		// armed for a late resume after the utterance.
+		if err = c.native.Pause(ctx); err != nil {
+			aliceButtonDebug("native: immediate pause failed: %v", err)
+		} else {
+			aliceButtonDebug("native: immediate pause after voice transport")
+			c.nativeLive = true
+		}
 		c.nativeArmUntil = now.Add(12 * time.Second)
 		c.nativeNextAt = time.Time{}
 	}
 	return nil
+}
+
+// Previous normally restarts the current song on the sender. A second press
+// shortly afterwards selects the preceding item. Restart deliberately sends
+// only one press; neither operation enables repeat mode.
+func (c *sharedController) voiceCommand(ctx context.Context, command string) error {
+	if command == "Restart" {
+		return c.receiver.Command(ctx, "Previous")
+	}
+	if err := c.receiver.Command(ctx, command); err != nil {
+		return err
+	}
+	if command != "Previous" {
+		return nil
+	}
+	timer := time.NewTimer(350 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	// Never deliver the second press to a new or disconnected sender.
+	s, err := c.receiver.State(ctx)
+	if err != nil {
+		return err
+	}
+	if !s.Available || s.Client == "" || s.Client != c.client {
+		return errors.New("sender changed during previous-track command")
+	}
+	return c.receiver.Command(ctx, "Previous")
 }
 
 // button handles one short Alice-button press. It acts only while a sender owns
@@ -332,16 +298,21 @@ func (c *sharedController) button(ctx context.Context, now time.Time) error {
 	}
 	s, err := c.receiver.State(ctx)
 	if err != nil {
+		aliceButtonDebug("button: receiver state failed: %v", err)
 		return err
 	}
+	aliceButtonDebug("button: client=%q available=%v active=%v state=%q idle=%v fresh=%v", s.Client, s.Available, s.Active, s.PlayerState, c.aliceIdle, now.Before(c.speechFreshUntil))
 	if s.Client == "" || !s.Available {
+		aliceButtonDebug("button: no AirPlay session, stock behaviour")
 		return nil // no AirPlay session: the firmware owns the button
 	}
 	if !c.aliceIdle && now.Before(c.speechFreshUntil) {
+		aliceButtonDebug("button: dialogue owns the button")
 		return nil // listening, speaking or a fresh dialogue owns the button
 	}
 	var nativeErr error
 	if nativeErr = c.native.Pause(ctx); nativeErr != nil {
+		aliceButtonDebug("button: native pause failed: %v", nativeErr)
 		c.releaseNative()
 	} else {
 		c.nativeLive = true
@@ -358,7 +329,20 @@ func (c *sharedController) button(ctx context.Context, now time.Time) error {
 	if playing {
 		command = "Pause"
 	}
-	return errors.Join(nativeErr, c.receiver.Command(ctx, command))
+	cmdErr := c.receiver.Command(ctx, command)
+	aliceButtonDebug("button: command=%s err=%v", command, cmdErr)
+	if cmdErr == nil {
+		// A sender that we paused is still a live AirPlay session: keep the
+		// indication lit and let the voice transport ("продолжить") resume it
+		// instead of letting Alice start her own player. The window is dropped
+		// as soon as the sender changes or its control channel disappears.
+		if command == "Pause" {
+			c.pausedUntil = now.Add(30 * time.Minute)
+		} else {
+			c.pausedUntil = time.Time{}
+		}
+	}
+	return errors.Join(nativeErr, cmdErr)
 }
 
 // buttonSuppression is the bounded cadence that keeps Quasar's own player
@@ -379,8 +363,14 @@ func (c *sharedController) startButtonSuppression(ctx context.Context, until tim
 	if cadence <= 0 {
 		cadence = aliceButtonPauseEvery
 	}
+	aliceButtonDebug("suppression: start cadence=%s hold=%s", cadence, time.Until(until).Round(time.Millisecond))
+	// The caller's context belongs to one control-loop event and is cancelled
+	// as soon as the press handler returns. The cadence is bounded by its own
+	// window and by stopButtonSuppression, so it must not inherit that deadline.
+	ctx = context.WithoutCancel(ctx)
 	go func() {
 		defer close(s.done)
+		defer aliceButtonDebug("suppression: ended")
 		ticker := time.NewTicker(cadence)
 		defer ticker.Stop()
 		timer := time.NewTimer(time.Until(until))
@@ -395,6 +385,7 @@ func (c *sharedController) startButtonSuppression(ctx context.Context, until tim
 				return
 			case <-ticker.C:
 				if err := c.native.PauseNow(); err != nil {
+					aliceButtonDebug("suppression: pause failed: %v", err)
 					return
 				}
 			}
@@ -454,7 +445,10 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 		c.pausedUntil = time.Time{}
 	}
 	wasActive := c.active
-	c.active = s.Active || s.Available && s.Client != "" && now.Before(c.pausedUntil)
+	// An attached AirPlay 2 output owns the session before RECORD/audio starts.
+	// Available alone is not enough: classic DACP metadata may be retained after
+	// a sender disconnects. Connected comes from the live paired event channel.
+	c.active = s.Active || s.Connected && s.Client != "" || s.Available && s.Client != "" && now.Before(c.pausedUntil)
 	// The button suppression runs on its own bounded cadence. The control loop
 	// only releases it when the window has elapsed in loop time, so a sender
 	// that reports Paused still keeps the native player suppressed.
@@ -467,6 +461,7 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	}
 	if !c.active {
 		c.volumeReady = false
+		c.remotePending = false
 		c.ledSuspended = false
 		if c.buttonSupp == nil {
 			c.releaseNative()
@@ -502,6 +497,7 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	if c.cfg.NativePlayer && c.native != nil && !c.nativeArmUntil.IsZero() {
 		switch {
 		case !now.Before(c.nativeArmUntil):
+			aliceButtonDebug("native: voice handover window expired")
 			c.nativeArmUntil = time.Time{}
 			c.nativeNextAt = time.Time{}
 			if c.buttonSupp == nil {
@@ -513,8 +509,10 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 		case c.aliceIdle && !now.Before(c.nativeNextAt):
 			c.nativeNextAt = now.Add(time.Second)
 			if nativeErr = c.native.Pause(ctx); nativeErr != nil {
+				aliceButtonDebug("native: voice handover pause failed: %v", nativeErr)
 				c.releaseNative()
 			} else {
+				aliceButtonDebug("native: voice handover paused native player")
 				c.nativeLive = true
 			}
 		}
@@ -527,7 +525,7 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 	// native volume has settled: its overlay can replace our one-shot frame.
 	if c.cfg.LEDs && c.ledCount > 0 && c.aliceIdle && now.Before(c.speechFreshUntil) && !c.ledSuspended && !now.Before(c.ledQuietUntil) {
 		state := "playing"
-		if now.Before(c.pausedUntil) {
+		if !s.Active || now.Before(c.pausedUntil) {
 			state = "paused"
 		}
 		level := c.cfg.LEDLevel
@@ -543,8 +541,16 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 			// and slowly afterwards in case Alice redrew her own indication.
 			if !c.ledOwned || c.ledState != state || !now.Before(c.ledRefreshAt) {
 				if err = ind.Indicate(ctx, state, level); err != nil {
+					if errors.Is(err, errFramebufferBusy) {
+						// Firmware/Jarvis owns the frame. Do not fight it with a
+						// refresh or send Off over its newly painted animation.
+						c.ledOwned, c.ledState = false, ""
+						return errors.Join(nativeErr, volumeErr)
+					}
+					aliceButtonDebug("led: indicate failed: %v", err)
 					return errors.Join(volumeErr, err)
 				}
+				aliceButtonDebug("led: framebuffer state=%s level=%d", state, level)
 				c.ledOwned, c.ledState = true, state
 				c.ledRefreshAt = now.Add(3 * time.Second)
 			}
@@ -554,8 +560,10 @@ func (c *sharedController) tick(ctx context.Context, now time.Time) error {
 				colors[i] = fmt.Sprintf("#00%02x%02x", level, level/2)
 			}
 			if err = c.station.Colors(ctx, colors); err != nil {
+				aliceButtonDebug("led: colors failed: %v", err)
 				return errors.Join(volumeErr, err)
 			}
+			aliceButtonDebug("led: ring state=%s level=%d", state, level)
 			c.ledOwned = true
 			c.ledRefreshAt = now.Add(3 * time.Second)
 		}
@@ -606,9 +614,24 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 		} // A genuinely new phone-side change wins.
 	}
 	if !c.volumeReady {
-		// Never turn a new stream up to a remembered handset volume. Native
-		// volume wins initially; subsequent sender events have a baseline.
-		c.lastDB = s.DB
+		// Start at the station's current native level, never at a remembered
+		// handset level. Publish it to the sender without writing native volume.
+		// Until its control channel is ready, keep native unchanged and retry.
+		if !s.Available || s.Client == "" {
+			return nil
+		}
+		target := percentDB(native)
+		if math.Abs(s.DB-target) > 0.01 {
+			if err = c.receiver.Volume(ctx, target); err != nil {
+				return err
+			}
+			// Metadata may still contain the old sender value for several ticks.
+			// Do not echo that value into native volume while awaiting the ack.
+			c.remotePending = true
+			c.remoteOldDB = s.DB
+			c.remoteDeadline = now.Add(3 * time.Second)
+		}
+		c.lastDB = target
 		c.lastNative = native
 		c.pendingNative = -1
 		c.volumeReady = true

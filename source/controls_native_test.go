@@ -44,11 +44,16 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 	if c.nativeArmUntil.IsZero() {
 		t.Fatal("handover not armed")
 	}
+	// The transport command pauses the native player immediately, before the
+	// next tick, so it cannot overlap the sender resume.
+	if p.pauseCount() != 1 {
+		t.Fatalf("immediate native pause missing: %d", p.pauseCount())
+	}
 	// Alice is busy again: never touch her player.
 	if err := c.tick(ctx, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauseCount() != 0 {
+	if p.pauseCount() != 1 {
 		t.Fatal("paused native player while Alice was busy")
 	}
 	// She is idle now, so the handover pauses the resumed native music.
@@ -57,16 +62,16 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 	if err := c.tick(ctx, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauseCount() != 1 {
+	if p.pauseCount() != 2 {
 		t.Fatalf("handover did not pause native player: %d", p.pauseCount())
 	}
 	// Keep catching a late resume, but rate-limited.
 	_ = c.tick(ctx, now.Add(2100*time.Millisecond))
-	if p.pauseCount() != 1 {
+	if p.pauseCount() != 2 {
 		t.Fatal("handover was not rate-limited")
 	}
 	_ = c.tick(ctx, now.Add(3*time.Second))
-	if p.pauseCount() != 2 {
+	if p.pauseCount() != 3 {
 		t.Fatal("late native resume was not caught")
 	}
 	// Expiry ends the session; no stray CLI and no further input.
@@ -78,7 +83,7 @@ func TestNativeHandoverFollowsVoiceTransport(t *testing.T) {
 		t.Fatal("handover window not cleared")
 	}
 	_ = c.tick(ctx, now.Add(16*time.Second))
-	if p.pauseCount() != 2 {
+	if p.pauseCount() != 3 {
 		t.Fatal("handover ran after expiry")
 	}
 }
@@ -104,7 +109,7 @@ func TestNativeHandoverCatchesLateResume(t *testing.T) {
 	if err := c.tick(ctx, now.Add(5*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if p.pauseCount() != 1 {
+	if p.pauseCount() != 2 {
 		t.Fatalf("late native resume was not paused: %d", p.pauseCount())
 	}
 }
@@ -146,7 +151,7 @@ func TestNativeHandoverReleasedOnSenderChange(t *testing.T) {
 	c.aliceIdle = true
 	c.speechFreshUntil = now.Add(time.Minute)
 	_ = c.tick(ctx, now.Add(time.Second))
-	if p.pauseCount() != 1 {
+	if p.pauseCount() != 2 {
 		t.Fatalf("handover did not start: pauses=%d", p.pauseCount())
 	}
 	r.s.Client = "other-sender"

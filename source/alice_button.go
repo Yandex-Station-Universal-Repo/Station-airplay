@@ -23,16 +23,28 @@ import (
 )
 
 const (
-	// Mini 2's Alice key as reported by the stock SAR keypad.
+	// The Alice key as reported by every qualified stock keypad: Mini 2
+	// (sar0_pad0), Lite 2 (aw933xx/aw9610x) and Station 2 (midi_touch).
 	aliceButtonKey = 582
-	// The stock keypad node is named after the SAR pad; an event number is not
-	// stable enough to hard-code.
-	aliceButtonDeviceName = "sar0_pad0"
+	// EVIOCGBIT(EV_KEY) returns a bitmap of KEY_CNT (768) bits.
+	evKey          = 1
+	keyBitmapBytes = 96
+
 	aliceButtonShortMin   = 30 * time.Millisecond
 	aliceButtonShortMax   = 600 * time.Millisecond
-	aliceButtonPauseHold  = 5 * time.Second
+	aliceButtonPauseHold  = 8 * time.Second
 	aliceButtonPauseEvery = 200 * time.Millisecond
 )
+
+// aliceButtonModels lists the models whose stock keypad reports the Alice key
+// as KEY_ALICE and which have been mapped for the AirPlay shortcut. Discovery
+// itself is capability-based; this list only decides whether the option is
+// allowed on the device at all.
+var aliceButtonModels = map[string]bool{
+	"yandexmini_2":    true,
+	"yandexplum":      true,
+	"yandexstation_2": true,
+}
 
 // input_event is 8 bytes of timeval plus type/code/value. The supervisor is
 // built for 32-bit ARM, but deriving the size keeps the decoder honest if it is
@@ -44,26 +56,74 @@ var (
 	inputValueAt   = inputEventSize - 4
 )
 
-// findAliceButtonEvent locates the keypad by device name and returns its event
-// node name (for example "event0"). A missing node is an error, never a silent
-// fallback to an unrelated input device.
-func findAliceButtonEvent(sysRoot string) (string, error) {
-	paths, err := filepath.Glob(filepath.Join(sysRoot, "event*", "device", "name"))
+// findAliceButtonEvent locates the keypad by asking evdev which input node
+// reports the Alice key and returns its event node name (for example
+// "event2"). Device names differ across models and event numbers are not
+// stable, so the capability bitmap is the only reliable selector. No matching
+// node, or more than one, is an error: the shortcut must never read an
+// unrelated input device.
+func findAliceButtonEvent(devRoot string) (string, error) {
+	paths, err := filepath.Glob(filepath.Join(devRoot, "event*"))
 	if err != nil {
 		return "", err
 	}
 	sort.Strings(paths)
+	var found []string
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
+		st, err := os.Stat(path)
+		if err != nil || st.IsDir() {
 			continue
 		}
-		if strings.TrimSpace(string(data)) != aliceButtonDeviceName {
+		ok, err := inputDeviceHasKey(path, aliceButtonKey)
+		if err != nil || !ok {
 			continue
 		}
-		return filepath.Base(filepath.Dir(filepath.Dir(path))), nil
+		found = append(found, filepath.Base(path))
 	}
-	return "", fmt.Errorf("input device %q not found", aliceButtonDeviceName)
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 0:
+		return "", fmt.Errorf("no input device reports key %d", aliceButtonKey)
+	default:
+		return "", fmt.Errorf("multiple input devices report key %d: %s", aliceButtonKey, strings.Join(found, ", "))
+	}
+}
+
+// inputDeviceHasKey is indirected so capability discovery can be unit-tested
+// without real evdev nodes.
+var inputDeviceHasKey = probeInputDeviceKey
+
+// probeInputDeviceKey asks evdev for the device's key bitmap. The descriptor is
+// opened read-only and never grabbed.
+func probeInputDeviceKey(path string, code int) (bool, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	bitmap := make([]byte, keyBitmapBytes)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), evIOCGBit(evKey, len(bitmap)), uintptr(unsafe.Pointer(&bitmap[0]))); errno != 0 {
+		return false, errno
+	}
+	return keyBitmapHas(bitmap, code), nil
+}
+
+// evIOCGBit builds the EVIOCGBIT(ev, len) request number.
+func evIOCGBit(ev, length int) uintptr {
+	const (
+		iocRead = 2
+		iocType = 'E'
+	)
+	return uintptr(iocRead)<<30 | uintptr(length)<<16 | uintptr(iocType)<<8 | uintptr(0x20+ev)
+}
+
+// keyBitmapHas reports whether code is set in an EVIOCGBIT(EV_KEY) bitmap.
+func keyBitmapHas(bitmap []byte, code int) bool {
+	if code < 0 || code/8 >= len(bitmap) {
+		return false
+	}
+	return bitmap[code/8]&(1<<uint(code%8)) != 0
 }
 
 // decodeAliceButtonEvents turns the keypad stream into short-press signals.

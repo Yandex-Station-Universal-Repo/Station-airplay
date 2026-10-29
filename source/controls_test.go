@@ -68,7 +68,9 @@ func (s *mockStation) ClaimSpeech(context.Context, string) error {
 	return nil
 }
 func testControls() (*sharedController, *mockReceiver, *mockStation) {
-	r := &mockReceiver{s: receiverState{Active: true, Available: true, Client: "mock-sender", DB: -15}}
+	// Unrelated control tests start with matching phone/native levels. Volume
+	// handoff tests below explicitly exercise differing initial values.
+	r := &mockReceiver{s: receiverState{Active: true, Available: true, Client: "mock-sender", DB: percentDB(70)}}
 	s := &mockStation{v: 70}
 	c := &sharedController{cfg: controlsConfig{Voice: true, NativeVolume: true, Ducking: true, LEDs: true}, receiver: r, station: s, ledCount: 3}
 	c.aliceIdle = true

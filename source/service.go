@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 1.4.5"
+	version      = "Station airplay 1.4.13"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170

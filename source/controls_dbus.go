@@ -57,17 +57,18 @@ func (r *dbusReceiver) State(ctx context.Context) (receiverState, error) {
 	if v, ok := b["PlayerState"].Value().(string); ok {
 		s.PlayerState = v
 	}
-	if !s.Available {
-		// The upstream Available property covers classic DACP, not AirPlay 2's
-		// paired event channel. Only enable its existing transport if the native
-		// receiver confirms a live channel for this exact observed client.
-		var version uint32
-		var modern bool
-		var client string
-		err = o.CallWithContext(ctx, receiverBusName+".GetControlStatus", 0).Store(&version, &modern, &client)
-		if err == nil && version == 1 && modern && s.Client != "" && client == s.Client {
-			s.Available = true
-		}
+	// Always ask, even when classic DACP is available. Its retained Client and
+	// Active metadata may lag the initial AirPlay 2 attachment until audio starts.
+	// This method reports the principal live event connection and its own client,
+	// so it is authoritative over stale/empty classic metadata.
+	var version uint32
+	var modern bool
+	var client string
+	err = o.CallWithContext(ctx, receiverBusName+".GetControlStatus", 0).Store(&version, &modern, &client)
+	if err == nil && version == 1 && modern && client != "" {
+		s.Connected = true
+		s.Client = client
+		s.Available = true
 	}
 	return s, nil
 }
@@ -142,6 +143,7 @@ func serveControls(ctx context.Context, bus string, api *yamAPI, d yamDevice, cf
 				stop, done := context.WithTimeout(context.Background(), time.Second)
 				defer done()
 				_ = fb.Off(stop)
+				_ = fb.Close()
 			}()
 		} else {
 			fmt.Fprintf(os.Stderr, "station-airplay: Station 2 indication unavailable: %v\n", e)
@@ -153,7 +155,7 @@ func serveControls(ctx context.Context, bus string, api *yamAPI, d yamDevice, cf
 	}
 	buttonEvents := make(chan struct{}, 1)
 	if cfg.AliceButton {
-		event, e := findAliceButtonEvent("/sys/class/input")
+		event, e := findAliceButtonEvent("/dev/input")
 		if e != nil {
 			return e
 		}
@@ -228,6 +230,7 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 	report := func(err error) {
 		if err != nil && time.Since(lastError) > 30*time.Second {
 			fmt.Println("shared controls: operation unavailable (details intentionally redacted)")
+			aliceButtonDebug("control: operation failed: %v", err)
 			lastError = time.Now()
 		}
 	}
@@ -297,10 +300,10 @@ func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg contro
 		if !cfg.NativePlayer {
 			return errors.New("alice_button requires native_player")
 		}
-		if d.Model != "yandexmini_2" {
-			return errors.New("alice_button is qualified only for Mini 2")
+		if !aliceButtonModels[d.Model] {
+			return fmt.Errorf("alice_button is not qualified for model %q", d.Model)
 		}
-		if _, err := findAliceButtonEvent("/sys/class/input"); err != nil {
+		if _, err := findAliceButtonEvent("/dev/input"); err != nil {
 			return fmt.Errorf("Alice button keypad not found: %w", err)
 		}
 	}

@@ -8,12 +8,15 @@ package main
 // Alice is idle (the controls state machine owns that gate).
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -23,9 +26,14 @@ const (
 )
 
 type framebufferLED struct {
-	mu   sync.Mutex
-	path string
+	mu         sync.Mutex
+	file       *os.File
+	lastFrame  []byte
+	quietUntil time.Time
+	now        func() time.Time
 }
+
+var errFramebufferBusy = errors.New("framebuffer belongs to firmware or another indicator")
 
 func openStation2LED() (*framebufferLED, error) {
 	return openFramebufferLED(station2FBPath, station2FBSize)
@@ -42,14 +50,11 @@ func openFramebufferLED(path, sizePath string) (*framebufferLED, error) {
 	if geometry != "89,1" {
 		return nil, fmt.Errorf("unexpected Station 2 framebuffer geometry %q", geometry)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
-	if err = f.Close(); err != nil {
-		return nil, err
-	}
-	return &framebufferLED{path: path}, nil
+	return &framebufferLED{file: f, now: time.Now}, nil
 }
 
 // station2Frame reproduces the old package's solid ring frames: a bright
@@ -81,23 +86,71 @@ func (f *framebufferLED) Show(_ context.Context, state string, level uint8) erro
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	file, err := os.OpenFile(f.path, os.O_WRONLY, 0)
+	if f.file == nil {
+		return os.ErrClosed
+	}
+	current := make([]byte, station2LEDs*4)
+	if _, err := f.file.ReadAt(current, 0); err != nil {
+		return err
+	}
+	ours := f.lastFrame != nil && bytes.Equal(current, f.lastFrame)
+	if state == "off" {
+		// Never blank a frame freshly drawn by Alice or Jarvis, including on
+		// service shutdown. We may clear only our own exact current frame.
+		f.lastFrame = nil
+		if !ours {
+			return nil
+		}
+		return f.write(station2Frame(0, "off"))
+	}
+	if !ours && !bytes.Equal(current, make([]byte, station2LEDs*4)) {
+		f.lastFrame = nil
+		f.quietUntil = f.now().Add(time.Second)
+		return errFramebufferBusy
+	}
+	if !ours && f.lastFrame != nil {
+		// Our frame was cleared by somebody else. Do not immediately race the
+		// clear with another write, as the previous blind 3-second refresh did.
+		f.lastFrame = nil
+		f.quietUntil = f.now().Add(time.Second)
+		return errFramebufferBusy
+	}
+	if !ours && f.now().Before(f.quietUntil) {
+		return errFramebufferBusy
+	}
+	frame := station2Frame(level, state)
+	if ours && bytes.Equal(current, frame) {
+		return nil // already displayed: no periodic write/reopen/close cycle
+	}
+	if err := f.write(frame); err != nil {
+		return err
+	}
+	f.lastFrame = frame
+	return nil
+}
+
+// Caller holds mu. A persistent descriptor avoids open/close side effects and
+// all reads/writes start at zero; no mmap, firmware suspension or extra loop.
+func (f *framebufferLED) write(frame []byte) error {
+	n, err := f.file.WriteAt(frame, 0)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	frame := station2Frame(level, state)
-	for len(frame) > 0 {
-		n, err := file.Write(frame)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return errors.New("short Station 2 framebuffer write")
-		}
-		frame = frame[n:]
+	if n != len(frame) {
+		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func (f *framebufferLED) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.file == nil {
+		return nil
+	}
+	err := f.file.Close()
+	f.file = nil
+	return err
 }
 
 func (f *framebufferLED) Off(ctx context.Context) error { return f.Show(ctx, "off", 0) }

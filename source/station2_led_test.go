@@ -46,6 +46,7 @@ func TestStation2ShowPaintsWholeFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = fb.Close() })
 	ctx := context.Background()
 	if err := fb.Show(ctx, "playing", 200); err != nil {
 		t.Fatal(err)
@@ -96,7 +97,86 @@ func TestStation2GeometryIsExact(t *testing.T) {
 	if err := os.WriteFile(size, []byte("89,1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := openFramebufferLED(path, size); err != nil {
+	if fb, err := openFramebufferLED(path, size); err != nil {
+		t.Fatal(err)
+	} else {
+		_ = fb.Close()
+	}
+}
+
+func TestFramebufferDoesNotFightOrBlankForeignFrame(t *testing.T) {
+	dir := t.TempDir()
+	path, size := filepath.Join(dir, "fb0"), filepath.Join(dir, "virtual_size")
+	_ = os.WriteFile(path, make([]byte, station2LEDs*4), 0600)
+	_ = os.WriteFile(size, []byte("89,1"), 0600)
+	fb, err := openFramebufferLED(path, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fb.Close() })
+	now := time.Now()
+	fb.now = func() time.Time { return now }
+	ctx := context.Background()
+	if err := fb.Show(ctx, "playing", 200); err != nil {
+		t.Fatal(err)
+	}
+	foreign := bytes.Repeat([]byte{0, 90, 0, 0}, station2LEDs)
+	_ = os.WriteFile(path, foreign, 0600)
+	for i := 0; i < 3; i++ {
+		now = now.Add(3 * time.Second)
+		if err := fb.Show(ctx, "playing", 200); err != errFramebufferBusy {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(path)
+		if !bytes.Equal(got, foreign) {
+			t.Fatal("fought a vendor animation")
+		}
+	}
+	if err := fb.Off(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, foreign) {
+		t.Fatal("shutdown blanked a foreign frame")
+	}
+	_ = os.WriteFile(path, make([]byte, station2LEDs*4), 0600)
+	if err := fb.Show(ctx, "playing", 200); err != errFramebufferBusy {
+		t.Fatal("missing quiet window", err)
+	}
+	now = now.Add(2 * time.Second)
+	if err := fb.Show(ctx, "playing", 200); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(path)
+	if !bytes.Equal(got, station2Frame(200, "playing")) {
+		t.Fatal("did not return after vendor released")
+	}
+}
+
+func TestFramebufferForeignClearIsNotImmediatelyOverwritten(t *testing.T) {
+	dir := t.TempDir()
+	path, size := filepath.Join(dir, "fb0"), filepath.Join(dir, "virtual_size")
+	_ = os.WriteFile(path, make([]byte, station2LEDs*4), 0600)
+	_ = os.WriteFile(size, []byte("89,1"), 0600)
+	fb, err := openFramebufferLED(path, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fb.Close() })
+	now := time.Now()
+	fb.now = func() time.Time { return now }
+	ctx := context.Background()
+	_ = fb.Show(ctx, "playing", 200)
+	_ = os.WriteFile(path, make([]byte, station2LEDs*4), 0600)
+	if err := fb.Show(ctx, "playing", 200); err != errFramebufferBusy {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, make([]byte, station2LEDs*4)) {
+		t.Fatal("immediately raced a native clear")
+	}
+	now = now.Add(2 * time.Second)
+	if err := fb.Show(ctx, "paused", 200); err != nil {
 		t.Fatal(err)
 	}
 }

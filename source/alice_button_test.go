@@ -78,19 +78,41 @@ func TestDecodeAliceButtonReleaseWithoutPress(t *testing.T) {
 	}
 }
 
-func TestFindAliceButtonEventUsesDeviceName(t *testing.T) {
+func TestKeyBitmapHas(t *testing.T) {
+	bitmap := make([]byte, keyBitmapBytes)
+	if keyBitmapHas(bitmap, aliceButtonKey) {
+		t.Fatal("empty bitmap must not report the Alice key")
+	}
+	bitmap[aliceButtonKey/8] |= 1 << uint(aliceButtonKey%8)
+	if !keyBitmapHas(bitmap, aliceButtonKey) {
+		t.Fatal("set bit was not detected")
+	}
+	if keyBitmapHas(bitmap, aliceButtonKey+1) {
+		t.Fatal("neighbouring bit reported as set")
+	}
+	if keyBitmapHas(bitmap, keyBitmapBytes*8) {
+		t.Fatal("out-of-range key reported as set")
+	}
+}
+
+func TestEVIOCGBitRequest(t *testing.T) {
+	// EVIOCGBIT(EV_KEY, 96): read, type 'E', nr 0x21, size 96.
+	if got := evIOCGBit(evKey, keyBitmapBytes); got != 0x80604521 {
+		t.Fatalf("request = %#x, want 0x80604521", got)
+	}
+}
+
+func TestFindAliceButtonEventUsesCapability(t *testing.T) {
 	root := t.TempDir()
-	for _, item := range []struct{ event, name string }{
-		{"event0", "other-pad"},
-		{"event1", aliceButtonDeviceName},
-	} {
-		dir := filepath.Join(root, item.event, "device")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	for _, name := range []string{"event0", "event1", "event2"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "name"), []byte(item.name+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	}
+	original := inputDeviceHasKey
+	defer func() { inputDeviceHasKey = original }()
+	inputDeviceHasKey = func(path string, code int) (bool, error) {
+		return filepath.Base(path) == "event1" && code == aliceButtonKey, nil
 	}
 	event, err := findAliceButtonEvent(root)
 	if err != nil {
@@ -101,6 +123,12 @@ func TestFindAliceButtonEventUsesDeviceName(t *testing.T) {
 	}
 	if _, err = findAliceButtonEvent(t.TempDir()); err == nil {
 		t.Fatal("missing keypad must be an error")
+	}
+
+	// Two keypads that both report the key are ambiguous and must be rejected.
+	inputDeviceHasKey = func(string, int) (bool, error) { return true, nil }
+	if _, err = findAliceButtonEvent(root); err == nil {
+		t.Fatal("ambiguous keypad must be an error")
 	}
 }
 
