@@ -10,6 +10,7 @@ import (
 // A custom token header must not follow even a local server's redirect.
 // Only synthetic tokens and loopback fixtures are used in this test.
 func TestYAMTokenCannotFollowRedirect(t *testing.T) {
+	clearRuntimeEnvironment(t)
 	var forwarded atomic.Int32
 	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-YAM-Token") != "" {
@@ -36,6 +37,7 @@ func TestYAMTokenCannotFollowRedirect(t *testing.T) {
 }
 
 func TestOwnInterfaceYAMTrafficCannotUseEnvironmentProxy(t *testing.T) {
+	clearRuntimeEnvironment(t)
 	t.Setenv("YAM_API_URL", "http://127.0.0.1:8099/api/runtime/fixture")
 	t.Setenv("YAM_API_TOKEN", "synthetic-fixture-token")
 	api, err := newYAMAPI()

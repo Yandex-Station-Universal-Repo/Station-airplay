@@ -22,6 +22,8 @@ type packageVolume struct {
 	script string
 	root   string
 	device yamDevice
+	api    *yamAPI
+	alias  string
 }
 
 func findPackageVolume(root string, d yamDevice) (*packageVolume, error) {
@@ -84,13 +86,22 @@ func (b *smallOutput) Write(p []byte) (int, error) {
 	return b.text.Write(p)
 }
 func (v *packageVolume) call(ctx context.Context, args ...string) (string, error) {
-	current, e := findPackageVolume(v.root, v.device)
+	var current *packageVolume
+	var e error
+	if v.api != nil {
+		current, e = findRuntimePackageVolume(ctx, v.api, v.alias, v.device)
+	} else {
+		current, e = findPackageVolume(v.root, v.device)
+	}
 	if e != nil {
 		return "", e
 	}
 	step, done := context.WithTimeout(ctx, 6*time.Second)
 	defer done()
 	cmd := exec.CommandContext(step, "sh", append([]string{current.script}, args...)...)
+	if v.api != nil {
+		cmd.Dir = current.root
+	}
 	cmd.Env = []string{"PATH=/system/bin:/usr/bin:/bin", "LANG=C"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true}
 	cmd.Cancel = func() error {
