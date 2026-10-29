@@ -37,6 +37,7 @@ const (
 
 type yamAPI struct {
 	base, token string
+	tokenHeader string
 	client      *http.Client
 }
 type yamDevice struct {
@@ -47,17 +48,17 @@ type yamDevice struct {
 }
 
 func newYAMAPI() (*yamAPI, error) {
-	raw, token := os.Getenv("YAM_API_URL"), os.Getenv("YAM_API_TOKEN")
-	if raw == "" || token == "" {
-		return nil, errors.New("missing YAM_API_URL or YAM_API_TOKEN: start through yam enable/run, not directly")
+	credentials, err := runtimeAPIEnvironment()
+	if err != nil {
+		return nil, err
 	}
-	u, err := url.Parse(raw)
+	u, err := url.Parse(credentials.url)
 	if err != nil || u.Scheme != "http" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1" && !ownAddress(u.Hostname())) {
-		return nil, errors.New("YAM_API_URL must be a loopback or own-interface HTTP address")
+		return nil, errors.New("runtime API URL must be a loopback or own-interface HTTP address")
 	}
 	// Authenticated traffic is local even when BetterYAM binds its LAN IP.
 	// Never route it through an environment proxy or follow a redirect with
-	// the custom X-YAM-Token header to a different endpoint.
+	// either runtime token header to a different endpoint.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	client := &http.Client{
@@ -67,7 +68,7 @@ func newYAMAPI() (*yamAPI, error) {
 			return http.ErrUseLastResponse
 		},
 	}
-	return &yamAPI{base: strings.TrimRight(raw, "/"), token: token, client: client}, nil
+	return &yamAPI{base: strings.TrimRight(credentials.url, "/"), token: credentials.token, tokenHeader: credentials.header, client: client}, nil
 }
 
 // ownAddress: BetterYAM binds only the LAN address and passes it as
@@ -104,7 +105,7 @@ func (a *yamAPI) requestContext(ctx context.Context, method, path string, payloa
 	if e != nil {
 		return e
 	}
-	req.Header.Set("X-YAM-Token", a.token)
+	req.Header.Set(a.tokenHeader, a.token)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
