@@ -62,7 +62,7 @@ def main():
     manifest = {'name': a.namespace+'/airplay', 'version': a.version, 'license': 'Mixed; see bundled LICENSES/ and third_party/licenses/',
         'description': 'AirPlay candidate hosted by Luna; no YAM service supervisor assumed',
         'targets': [a.platform],
-        'depends': ['yam/luna>=0.2.7', 'luna-binary-dependencies-v1', a.namespace+'/volume=1.0.2+all4.20261026'],
+        'depends': ['yam/luna >=0.2.7', 'luna-binary-dependencies-v1', a.namespace+'/volume =1.0.2+all4.20261026'],
         'files': {'share/luna/plugins/'+plugin_id+'/': 'payload/'}}
     (a.work_dir/'yam.yaml').write_text(json.dumps(manifest, indent=2)+'\n')
     a.output.parent.mkdir(parents=True, exist_ok=True)
