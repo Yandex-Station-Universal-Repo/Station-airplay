@@ -126,7 +126,7 @@ func serveControls(ctx context.Context, bus string, api *yamAPI, d yamDevice, cf
 		return err
 	}
 	defer r.conn.Close()
-	volume, err := controlsVolume(d, cfg)
+	volume, err := controlsVolume(ctx, api, d, cfg)
 	if err != nil {
 		return err
 	}
@@ -262,9 +262,12 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 	}
 }
 
-func controlsVolume(d yamDevice, cfg controlsConfig) (*packageVolume, error) {
+func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (*packageVolume, error) {
 	if !cfg.NativeVolume {
 		return nil, nil
+	}
+	if cfg.VolumeDependency != "" {
+		return findRuntimePackageVolume(ctx, api, cfg.VolumeDependency, d)
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -308,7 +311,7 @@ func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg contro
 		}
 	}
 	if cfg.NativeVolume {
-		v, err := controlsVolume(d, cfg)
+		v, err := controlsVolume(ctx, api, d, cfg)
 		if err != nil {
 			return err
 		}
