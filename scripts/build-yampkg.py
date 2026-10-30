@@ -20,6 +20,7 @@ def main():
     p.add_argument('--profiles', required=True, type=Path)
     p.add_argument('--work-dir', required=True, type=Path, help='Fresh staging directory outside this checkout')
     p.add_argument('--output', required=True, type=Path)
+    p.add_argument('--upx', type=Path, help='optional UPX binary; packs the supervisor only, never the receiver')
     a = p.parse_args()
     root = Path(__file__).resolve().parent.parent
     if not re.fullmatch(r'[a-z0-9-]{1,64}', a.namespace): p.error('invalid namespace')
@@ -44,6 +45,11 @@ def main():
             target.chmod(0o755 if data[:4] == b'\x7fELF' or target.suffix == '.sh' else 0o644)
     shutil.copyfile(a.supervisor, payload/'bin/station-airplay')
     (payload/'bin/station-airplay').chmod(0o755)
+    if a.upx is not None:
+        # Safe for the static ARMv7 supervisor. The dynamically linked receiver
+        # is deliberately not packed: the private musl/glibc loader rejects UPX ELF.
+        subprocess.run([str(a.upx.resolve()), '--best', str(payload/'bin/station-airplay')], check=True)
+        subprocess.run([str(a.upx.resolve()), '-t', str(payload/'bin/station-airplay')], check=True)
     text = (root/'plugin.toml').read_text()
     for key, value in [('id', plugin_id), ('version', a.version), ('entry', 'launch-airplay.sh'), ('path', 'launch-airplay.sh')]:
         text, count = re.subn(r'^'+key+r'\s*=.*$', key+' = '+json.dumps(value), text, flags=re.M)
