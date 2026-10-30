@@ -1,0 +1,10 @@
+{
+  "voice": true,
+  "native_volume": true,
+  "volume_dependency": "station-volume",
+  "ducking": true,
+  "leds": true,
+  "led_level": 200,
+  "native_player": true,
+  "alice_button": true
+}

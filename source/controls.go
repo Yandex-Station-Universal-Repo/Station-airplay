@@ -14,14 +14,15 @@ import (
 )
 
 type controlsConfig struct {
-	Voice        bool         `json:"voice"`
-	NativeVolume bool         `json:"native_volume"`
-	Ducking      bool         `json:"ducking"`
-	LEDs         bool         `json:"leds"`
-	LEDLevel     uint8        `json:"led_level,omitempty"`
-	NativePlayer bool         `json:"native_player,omitempty"`
-	AliceButton  bool         `json:"alice_button,omitempty"`
-	Group        *groupConfig `json:"group,omitempty"`
+	Voice            bool         `json:"voice"`
+	NativeVolume     bool         `json:"native_volume"`
+	VolumeDependency string       `json:"volume_dependency,omitempty"`
+	Ducking          bool         `json:"ducking"`
+	LEDs             bool         `json:"leds"`
+	LEDLevel         uint8        `json:"led_level,omitempty"`
+	NativePlayer     bool         `json:"native_player,omitempty"`
+	AliceButton      bool         `json:"alice_button,omitempty"`
+	Group            *groupConfig `json:"group,omitempty"`
 }
 
 func loadControls(path string) (*controlsConfig, error) {
@@ -41,6 +42,9 @@ func loadControls(path string) (*controlsConfig, error) {
 	}
 	if err = d.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("trailing control configuration")
+	}
+	if c.VolumeDependency != "" && (!c.NativeVolume || !validVolumeDependency(c.VolumeDependency)) {
+		return nil, errors.New("volume_dependency requires native_volume and a simple runtime alias")
 	}
 	return &c, nil
 }
