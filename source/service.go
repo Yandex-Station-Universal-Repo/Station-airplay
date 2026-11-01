@@ -197,6 +197,10 @@ var (
 	plumSharedProfile = stationProfile{name: "Yandex Lite 2 AirPlay", models: []string{"yandexplum", "plum"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
 	profiles          = []stationProfile{plumProfile, midiProfile, mini2Profile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
+		// Station 3 (orion) reports its own model id. It shares the ARMHf
+		// receiver and the speaker PCM with the other AirPlay 2 boards; the
+		// matrix display is not an RGB ring, so LED output stays capability-driven.
+		{name: "Yandex Station 3 AirPlay", models: []string{"yandexstation_3"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "yandex-station-3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Mini 3 AirPlay", models: []string{"bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},

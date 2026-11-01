@@ -46,6 +46,7 @@ func TestReceiverLogsStayBounded(t *testing.T) {
 func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 	for _, tc := range []struct{ model, pcm, abi, icon string }{
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
+		{"yandexstation_3", "speakers", "armhf", "AudioAccessory5,1"},
 		{"yandexmini_2", "default", "armhf", "AudioAccessory5,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 		{"bergamot", "speakers", "armhf", "AudioAccessory5,1"},
