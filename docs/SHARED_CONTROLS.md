@@ -28,6 +28,41 @@ or replace Luna's speech/LED host. Packaging `.yampkg`, binary-plugin discovery,
 service lifecycle and v2 station-volume dependency resolution are separate work.
 The existing `.yap` and relative controls/dependency layout are unchanged here.
 
+## YAM v2 native-volume dependency (explicit opt-in)
+
+Set `"native_volume":true,"volume_dependency":"station-volume"` only when
+running as a leased YAM binary plugin on a Luna host that implements
+`GET /api/runtime/:id/dependencies/:alias`. The runtime descriptor must declare:
+
+```toml
+[dependencies]
+station-volume = "station.volume"
+```
+
+The YAM source package must also declare its package-level dependency on
+`station/volume` and the host capability `luna-binary-dependencies-v1`.
+The alias and namespace shown here are the proposed integration layout, not
+an assertion that these packages are already published in a registry.
+
+In this mode AirPlay asks its authenticated Luna API for an enabled,
+compatible, package-owned oneshot shell launcher **before every** check/get/set
+and readback. It does not inspect `enabled.json`, `plugin.toml` or sibling
+directories to find station-volume. Luna's caller lease prevents YAM from
+removing the resolved files while the invocation is active; stop all leased
+plugins before a YAM transaction.
+
+The returned station-volume launcher must be plain `sh`, with absolute
+contained paths and no fixed args or library override. The original shell
+guard still implements `check-write` and guards every `set`; no `--force`,
+direct native binary call or alternate protocol is introduced. Existing
+timeouts, output caps, child process-group cancellation and readback stay in
+effect. A disabled/missing provider or API error fails closed, with **no**
+legacy filesystem fallback. Omit `volume_dependency` for the unchanged legacy
+`.yap` sibling-directory resolver. Setting an alias requires native volume.
+
+This adapter alone does not install `.yampkg`, bootstrap Luna, change existing
+user config or qualify hardware. Packaging and migration are separate work.
+
 ## Reused components
 
 - station-volume get/set/acknowledgement, with compatibility and firmware guards.
