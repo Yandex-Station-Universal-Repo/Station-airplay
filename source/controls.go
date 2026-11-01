@@ -16,6 +16,7 @@ import (
 type controlsConfig struct {
 	Voice            bool         `json:"voice"`
 	NativeVolume     bool         `json:"native_volume"`
+	VolumeBackend    string       `json:"volume_backend,omitempty"`
 	VolumeDependency string       `json:"volume_dependency,omitempty"`
 	Ducking          bool         `json:"ducking"`
 	LEDs             bool         `json:"leds"`
@@ -24,6 +25,14 @@ type controlsConfig struct {
 	AliceButton      bool         `json:"alice_button,omitempty"`
 	Group            *groupConfig `json:"group,omitempty"`
 }
+
+// volumeBackend values. An empty value means "luna when the runtime API is
+// there, station-volume otherwise", so an existing device config keeps working
+// after the package upgrade.
+const (
+	volumeBackendLuna    = "luna"
+	volumeBackendPackage = "package"
+)
 
 func loadControls(path string) (*controlsConfig, error) {
 	if path == "" {
@@ -42,6 +51,12 @@ func loadControls(path string) (*controlsConfig, error) {
 	}
 	if err = d.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("trailing control configuration")
+	}
+	if c.VolumeBackend != "" && c.VolumeBackend != volumeBackendLuna && c.VolumeBackend != volumeBackendPackage {
+		return nil, errors.New("volume_backend must be luna or package")
+	}
+	if c.VolumeBackend == volumeBackendLuna && c.VolumeDependency != "" {
+		return nil, errors.New("volume_dependency is only valid with volume_backend package")
 	}
 	if c.VolumeDependency != "" && (!c.NativeVolume || !validVolumeDependency(c.VolumeDependency)) {
 		return nil, errors.New("volume_dependency requires native_volume and a simple runtime alias")

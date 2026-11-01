@@ -81,7 +81,7 @@ esac
 	t.Setenv("YAM_API_TOKEN", "fixture-private-do-not-forward")
 	t.Setenv("YAM_API_URL", "fixture-private")
 	ctx := context.Background()
-	if e = v.checkWrite(ctx); e != nil {
+	if e = v.CheckWrite(ctx); e != nil {
 		t.Fatal(e)
 	}
 	if value, e := v.SetVolume(ctx, 67); e != nil || value != 65 {
@@ -103,7 +103,7 @@ func TestVolumeDependencyMissingPreflightFailsClosed(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = v.checkWrite(context.Background()); e == nil {
+	if e = v.CheckWrite(context.Background()); e == nil {
 		t.Fatal("unsupported write firmware accepted")
 	}
 }

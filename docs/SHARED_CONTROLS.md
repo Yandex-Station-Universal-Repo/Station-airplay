@@ -28,11 +28,25 @@ or replace Luna's speech/LED host. Packaging `.yampkg`, binary-plugin discovery,
 service lifecycle and v2 station-volume dependency resolution are separate work.
 The existing `.yap` and relative controls/dependency layout are unchanged here.
 
-## YAM v2 native-volume dependency (explicit opt-in)
+## Station volume backend (Luna first, package fallback)
 
-Set `"native_volume":true,"volume_dependency":"station-volume"` only when
-running as a leased YAM binary plugin on a Luna host that implements
-`GET /api/runtime/:id/dependencies/:alias`. The runtime descriptor must declare:
+`native_volume=true` writes the station volume through Luna's own HTTP API by
+default: `GET /api/volume` for the current level and `POST /api/volume/set`
+with `{"percent":0..100}` for a change. The response carries the applied level;
+AirPlay reads it again and rejects a write that did not land. Luna also owns the
+vendor path (maind/VQE, then ALSA), so no separate helper or runtime dependency
+alias is needed. The emulator exposes 32 ALSA steps, so a request may land a few
+percent away (47 becomes 50); the readback tolerates the station's own step size.
+
+Selection is automatic when `volume_backend` is omitted: a Luna invocation URL
+(`/api/runtime/<id>`) selects the Luna backend, a legacy `YAM_API_URL` keeps the
+package resolver. Force one with `"volume_backend":"luna"` or
+`"volume_backend":"package"`.
+
+The station-volume package remains supported as an explicit fallback:
+`"volume_backend":"package"` plus `"volume_dependency":"station-volume"` on a
+Luna host that implements `GET /api/runtime/:id/dependencies/:alias`. The runtime
+descriptor must declare:
 
 ```toml
 [dependencies]
@@ -57,16 +71,33 @@ guard still implements `check-write` and guards every `set`; no `--force`,
 direct native binary call or alternate protocol is introduced. Existing
 timeouts, output caps, child process-group cancellation and readback stay in
 effect. A disabled/missing provider or API error fails closed, with **no**
-legacy filesystem fallback. Omit `volume_dependency` for the unchanged legacy
-`.yap` sibling-directory resolver. Setting an alias requires native volume.
+legacy filesystem fallback. Omit `volume_dependency` for the automatic backend.
+Setting an alias requires native volume.
+
+Function parity between the two backends:
+
+| Function | Luna `/api/volume` | station-volume package |
+|---|---|---|
+| current level | `GET /api/volume` | `station-volume.sh get` |
+| write | `POST /api/volume/set` | `set N` under the shell guard |
+| confirmation | read back after write, ±5 % | exact 5 % grid readback |
+| preflight | endpoint answers before the receiver starts | `check-write` + bounded `get` retry |
+| station-side changes | controller poll during an active session | same controller poll |
+| write guard | Luna owns the vendor volume path | five-build firmware allowlist |
+
+The firmware allowlist is tied to the removed mechanism: it guarded typed
+protobuf frames written straight into the Quasar volume port. Luna performs the
+supported vendor write itself on every board it supports, so the behaviour that
+matters here is the answered preflight plus the per-write readback.
 
 This adapter alone does not install `.yampkg`, bootstrap Luna, change existing
 user config or qualify hardware. Packaging and migration are separate work.
 
 ## Reused components
 
-- station-volume get/set/acknowledgement, with compatibility and firmware guards.
-  Only a command adapter is added; YAM has no duplicate native-volume protocol.
+- station-volume get/set/acknowledgement through Luna's `/api/volume`; the
+  package backend keeps its compatibility and firmware guards. Only a command
+  adapter is added; YAM has no duplicate native-volume protocol.
 - Shairport's own RemoteControl methods, not a second DACP implementation.
 - Existing YAM authentication, Quasar framing, declared command policy and cancel.
 - Existing YAM LED API for announced RGB rings. Station 2's 89x1 framebuffer is
@@ -107,13 +138,14 @@ different sender gets a transport command. A paused-by-voice sender may resume f
 30 minutes only while the same sender's remote remains available. Other Alice
 intents, including the owner's agent wake phrase, are not intercepted.
 
-`native_volume=true` requires a compatible installed station-volume with
-`check-write`. The native level wins at startup. Later phone changes go through
-station-volume, read back the actual quantised volume and suppress feedback. Two
+`native_volume=true` uses Luna's `/api/volume` by default, or a compatible
+installed station-volume with `check-write` when the package backend is
+selected. The native level wins at startup. Later phone changes are written,
+read back (the station's own step size is accepted) and suppress feedback. Two
 stable native changes request sender volume through Shairport; asynchronous replies
 are bounded. The receiver ignores its own source attenuation only in this opt-in
 mode, after preflight. No mixer writes or `--force` fallback are used. The
-station-volume package guards five exact builds: Mini 2, both Lite 2 variants,
+optional package backend guards five exact builds: Mini 2, both Lite 2 variants,
 Station 2 and the previously verified Midi build. Each build also requires its own
 device-tree compatible string; an unknown build or a different board is rejected
 before the helper runs.

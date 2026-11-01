@@ -95,7 +95,7 @@ func (r *dbusReceiver) Gain(ctx context.Context, percent, lease uint32) error {
 
 type yamControlStation struct {
 	api    *yamAPI
-	volume *packageVolume
+	volume volumeControl
 }
 
 func (s yamControlStation) GetVolume(ctx context.Context) (float64, error) {
@@ -262,18 +262,54 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 	}
 }
 
-func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (*packageVolume, error) {
+// controlsVolume picks the station volume owner. Without an explicit backend the
+// runtime API decides: a Luna invocation gets Luna's /api/volume, a legacy YAM
+// host keeps the station-volume package. An explicit volume_dependency always
+// means the package, so existing device configurations keep their behaviour.
+func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (volumeControl, error) {
 	if !cfg.NativeVolume {
 		return nil, nil
 	}
-	if cfg.VolumeDependency != "" {
-		return findRuntimePackageVolume(ctx, api, cfg.VolumeDependency, d)
+	backend := cfg.VolumeBackend
+	if backend == "" {
+		if cfg.VolumeDependency != "" {
+			backend = volumeBackendPackage
+		} else if api != nil {
+			if _, err := lunaServerRoot(api.base); err == nil {
+				backend = volumeBackendLuna
+			} else {
+				backend = volumeBackendPackage
+			}
+		} else {
+			backend = volumeBackendPackage
+		}
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
+	switch backend {
+	case volumeBackendLuna:
+		v, err := newLunaControlVolume(api)
+		if err == nil {
+			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		}
+		return v, err
+	case volumeBackendPackage:
+		var v volumeControl
+		var err error
+		if cfg.VolumeDependency != "" {
+			v, err = findRuntimePackageVolume(ctx, api, cfg.VolumeDependency, d)
+		} else {
+			exe, e := os.Executable()
+			if e != nil {
+				return nil, e
+			}
+			v, err = findPackageVolume(filepath.Dir(filepath.Dir(exe)), d)
+		}
+		if err == nil && v != nil {
+			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		}
+		return v, err
+	default:
+		return nil, errors.New("unknown volume backend")
 	}
-	return findPackageVolume(filepath.Dir(filepath.Dir(exe)), d)
 }
 func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) error {
 	var caps struct {
@@ -315,7 +351,7 @@ func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg contro
 		if err != nil {
 			return err
 		}
-		if err = v.checkWrite(ctx); err != nil {
+		if err = v.CheckWrite(ctx); err != nil {
 			return err
 		}
 		if err = waitNativeVolume(ctx, v); err != nil {
@@ -334,7 +370,7 @@ var (
 	nativeVolumeRetryInterval = time.Second
 )
 
-func waitNativeVolume(ctx context.Context, v *packageVolume) error {
+func waitNativeVolume(ctx context.Context, v volumeControl) error {
 	deadline := time.Now().Add(nativeVolumeReadyTimeout)
 	reported := false
 	for {

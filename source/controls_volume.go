@@ -18,6 +18,17 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// volumeControl is the station-volume backend used by the shared controls.
+// Every implementation must keep the same three operations: read the current
+// level, write a level and confirm the write, and prove before startup that
+// writing is safe on this board.
+type volumeControl interface {
+	GetVolume(context.Context) (float64, error)
+	SetVolume(context.Context, int) (float64, error)
+	CheckWrite(context.Context) error
+	Backend() string
+}
+
 type packageVolume struct {
 	script string
 	root   string
@@ -25,6 +36,8 @@ type packageVolume struct {
 	api    *yamAPI
 	alias  string
 }
+
+func (v *packageVolume) Backend() string { return "the station-volume package" }
 
 func findPackageVolume(root string, d yamDevice) (*packageVolume, error) {
 	dir := filepath.Join(filepath.Dir(root), "station-volume")
@@ -122,7 +135,7 @@ func (v *packageVolume) call(ctx context.Context, args ...string) (string, error
 	}
 	return strings.TrimSpace(out.text.String()), nil
 }
-func (v *packageVolume) checkWrite(ctx context.Context) error {
+func (v *packageVolume) CheckWrite(ctx context.Context) error {
 	out, e := v.call(ctx, "check-write")
 	if e != nil {
 		return e

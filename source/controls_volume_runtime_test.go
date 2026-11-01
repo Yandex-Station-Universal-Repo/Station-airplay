@@ -45,7 +45,7 @@ func TestRuntimeVolumeUsesGuardedLauncherAndRevalidatesEveryCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = v.checkWrite(context.Background()); err != nil {
+	if err = v.CheckWrite(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := v.GetVolume(context.Background()); err != nil || got != 30 {
