@@ -352,7 +352,7 @@ enable-wide-area=no
 [publish]
 publish-hinfo=no
 publish-workstation=no
-publish-addresses=no
+publish-addresses=yes
 [rlimits]
 `, host)
 	path := filepath.Join(st, "avahi-daemon.conf")
