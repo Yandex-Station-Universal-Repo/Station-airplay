@@ -62,6 +62,9 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 			if p.pcm != tc.pcm || p.receiverABI != tc.abi || !p.quasarCoexist {
 				t.Fatalf("wrong ABI/audio contract: %+v", p)
 			}
+			if tc.model == "yandexstation_3" && !p.packagedDBus {
+				t.Fatal("Station 3 must use the packaged armhf D-Bus")
+			}
 			conf := receiverConfig(p)
 			for _, s := range []string{tc.pcm, tc.icon, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
 				if !strings.Contains(conf, s) {
