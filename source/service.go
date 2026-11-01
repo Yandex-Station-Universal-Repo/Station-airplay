@@ -1052,7 +1052,7 @@ func runPlum(ctx context.Context) error {
 			return e
 		}
 		defer volume.stop()
-		fmt.Println("station volume: the sender's slider sets the station volume via the station-volume package")
+		fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", volume.backend())
 	}
 	fmt.Printf("%s running on %s (YAM clock+ring; no buttons)\n", version, hw.name)
 	exits := make(chan exitInfo, len(children))
@@ -1091,10 +1091,8 @@ func runPlum(ctx context.Context) error {
 					volume.set(state.volume)
 					state.senderVolume = false
 				}
-				volume.poll(func(percent int) {
-					if state.inSession(now) { // idle: Alice shows her own volume
-						state.showVolume(percent, now)
-					}
+				volume.poll(state.inSession(now), func(percent int) {
+					state.showVolume(percent, now)
 				})
 			}
 			if vis != nil {
