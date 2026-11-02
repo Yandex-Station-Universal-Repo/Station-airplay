@@ -1,5 +1,11 @@
 # Build
 
+Standalone Mini 2 native-volume arguments and the separate helper requirement
+are documented in [STANDALONE_VOLUME.md](../docs/STANDALONE_VOLUME.md). No new
+Go modules, audio binaries or redistributable firmware libraries are required.
+The supervisor must be rebuilt from these sources; the checked-in binary is
+not replaced as part of the source proposal.
+
 Go >=1.23, Python >=3.8; Linux/WSL for tests. One universal YAM package.
 
 ```sh

@@ -1,3 +1,15 @@
+## Unreleased
+
+- Явный `--standalone --shared-audio --volume-launcher PATH` для общей
+  громкости Mini 2 без runtime-хоста Luna/legacy YAM. Переиспользуются
+  существующие AirPlay D-Bus controller и helper station-volume, включая
+  проверку прошивки, подтверждение записи и штатную индикацию Quasar.
+- Двусторонняя синхронизация с исходным уровнем колонки при подключении;
+  ползунок отправителя возвращается к штатному шагу 5% без feedback loop.
+- Нет неявного fallback при ошибке авторизации runtime, личных путей,
+  нового менеджера или прямого управления LED. Остальные controls в этом
+  режиме отклоняются. [Условия и границы проверки](docs/STANDALONE_VOLUME.md).
+
 ## 1.4.13
 
 - Handle receiver-confirmed AirPlay 2 attachment before audio starts: inherit

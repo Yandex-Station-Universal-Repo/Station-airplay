@@ -1169,6 +1169,8 @@ func main() {
 	_ = os.Unsetenv("LD_LIBRARY_PATH")
 	sharedAudio := flag.Bool("shared-audio", false, "use audio-only shared PCM on supported Plum devices; keep Alice running")
 	controlsPath := flag.String("controls-config", "", "opt-in shared controls JSON (requires media-enabled YAM and receiver)")
+	standalone := flag.Bool("standalone", false, "explicit Mini 2 native-volume mode without a Luna/legacy YAM runtime")
+	volumeLauncher := flag.String("volume-launcher", "", "absolute station-volume.sh path for --standalone; firmware guard remains required")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -1192,7 +1194,15 @@ func main() {
 	if controls == nil && *controlsPath != "" {
 		fmt.Fprintln(os.Stderr, "controls configuration not found, shared controls disabled:", *controlsPath)
 	}
-	if e := runWithControls(ctx, *sharedAudio, controls); e != nil {
+	var runErr error
+	if *standalone {
+		runErr = runMini2Standalone(ctx, *sharedAudio, controls, *volumeLauncher)
+	} else if *volumeLauncher != "" {
+		runErr = errors.New("--volume-launcher requires --standalone")
+	} else {
+		runErr = runWithControls(ctx, *sharedAudio, controls)
+	}
+	if e := runErr; e != nil {
 		fmt.Fprintln(os.Stderr, "station-airplay:", e)
 		os.Exit(1)
 	}

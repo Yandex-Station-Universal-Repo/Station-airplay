@@ -544,7 +544,13 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 		controlsStarted = true
 		go func() {
 			defer close(controlDone)
-			if e := serveControls(ctx, bus, api, d, *controls); e != nil {
+			var e error
+			if api == nil {
+				e = serveStandaloneVolume(ctx, bus, *controls)
+			} else {
+				e = serveControls(ctx, bus, api, d, *controls)
+			}
+			if e != nil {
 				controlErrors <- e
 			}
 		}()

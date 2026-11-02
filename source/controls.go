@@ -14,14 +14,15 @@ import (
 )
 
 type controlsConfig struct {
-	Voice        bool         `json:"voice"`
-	NativeVolume bool         `json:"native_volume"`
-	Ducking      bool         `json:"ducking"`
-	LEDs         bool         `json:"leds"`
-	LEDLevel     uint8        `json:"led_level,omitempty"`
-	NativePlayer bool         `json:"native_player,omitempty"`
-	AliceButton  bool         `json:"alice_button,omitempty"`
-	Group        *groupConfig `json:"group,omitempty"`
+	volumeLauncher string       // explicit standalone dependency; never read from JSON
+	Voice          bool         `json:"voice"`
+	NativeVolume   bool         `json:"native_volume"`
+	Ducking        bool         `json:"ducking"`
+	LEDs           bool         `json:"leds"`
+	LEDLevel       uint8        `json:"led_level,omitempty"`
+	NativePlayer   bool         `json:"native_player,omitempty"`
+	AliceButton    bool         `json:"alice_button,omitempty"`
+	Group          *groupConfig `json:"group,omitempty"`
 }
 
 func loadControls(path string) (*controlsConfig, error) {
@@ -145,6 +146,7 @@ type sharedController struct {
 	buttonPauseUntil            time.Time
 	buttonCadence               time.Duration
 	buttonSupp                  *buttonSuppression
+	quantizeSender              bool // standalone: show the native 5% steps on the sender too
 }
 
 func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.Time) error {
@@ -649,6 +651,16 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 		c.lastDB = s.DB
 		c.pendingNative = -1
 		c.ledQuietUntil = now.Add(3 * time.Second)
+		if target := percentDB(c.lastNative); c.quantizeSender && math.Abs(target-s.DB) > 0.01 {
+			if err := c.receiver.Volume(ctx, target); err != nil {
+				c.volumeReady = false
+				return err
+			}
+			c.remotePending = true
+			c.remoteOldDB = s.DB
+			c.remoteDeadline = now.Add(3 * time.Second)
+			c.lastDB = target
+		}
 	} else if native != c.lastNative && !now.Before(c.duckUntil) {
 		// Two stable observations suppress native transition/quantisation noise.
 		if c.pendingNative == native {
