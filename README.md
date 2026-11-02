@@ -10,6 +10,9 @@
 `yam install`/`yam enable` ниже относятся к legacy YAM, не к v2.
 Правила выбора токена: [SHARED_CONTROLS.md](docs/SHARED_CONTROLS.md#runtime-host-authentication-luna-and-legacy-yam).
 
+Для уже подготовленных Luna-сборок: [рецепт упаковки `.yampkg` и исправление
+пространства имён `airplay/airplay-luna`](docs/LUNA_PACKAGING.md).
+
 > Опциональное управление (голос, кнопки отправителя, нативная громкость,
 > индикация): [SHARED_CONTROLS.md](docs/SHARED_CONTROLS.md). Выключено по
 > умолчанию; native volume переиспользует station-volume с его точными guards.
