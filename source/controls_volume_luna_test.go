@@ -81,17 +81,52 @@ func TestLunaVolumeReadWriteAndReadback(t *testing.T) {
 	if got, err := v.GetVolume(context.Background()); err != nil || got != 47 {
 		t.Fatalf("get: %v, %v", got, err)
 	}
+	// Selecting the backend measures one no-op write so a host with the old
+	// dead-port path keeps the direct ALSA fallback. It must not move the level.
+	if sets.Load() != 1 || current.Load() != 47 {
+		t.Fatalf("startup probe wrote %d times, level %d", sets.Load(), current.Load())
+	}
 	if got, err := v.SetVolume(context.Background(), 70); err != nil || got != 70 {
 		t.Fatalf("set/readback: %v, %v", got, err)
 	}
-	if current.Load() != 70 || sets.Load() != 1 {
+	if current.Load() != 70 || sets.Load() != 2 {
 		t.Fatal("write did not reach the station exactly once")
 	}
 	if _, err = v.SetVolume(context.Background(), 101); err == nil {
 		t.Fatal("out-of-range write accepted")
 	}
-	if sets.Load() != 1 {
+	if sets.Load() != 2 {
 		t.Fatal("invalid percent reached the station")
+	}
+}
+
+// TestLunaWriteProbeDetectsTheOldDeadPortPath separates a Luna that owns
+// Quasar's IPC from one that still retries the closed volume_manager port.
+func TestLunaWriteProbeDetectsTheOldDeadPortPath(t *testing.T) {
+	for _, want := range []bool{false, true} {
+		delay := time.Duration(0)
+		if want {
+			delay = 900 * time.Millisecond
+		}
+		host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				time.Sleep(delay)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]int{"percent": 40})
+		}))
+		v, err := newLunaControlVolume(lunaVolumeAPI(t, host))
+		if err != nil {
+			host.Close()
+			t.Fatal(err)
+		}
+		slow, err := lunaWriteIsSlow(context.Background(), v)
+		host.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slow != want {
+			t.Fatalf("slow=%v, want %v", slow, want)
+		}
 	}
 }
 
