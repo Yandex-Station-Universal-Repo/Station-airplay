@@ -286,6 +286,19 @@ func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsC
 	}
 	switch backend {
 	case volumeBackendLuna:
+		// Some firmwares publish volume_manager.port but never listen on it.
+		// Luna then retries the dead port and still falls back to ALSA, which
+		// costs about two seconds per slider step. When the port is closed the
+		// same ALSA write can be done directly; an explicit volume_backend
+		// keeps Luna's path either way.
+		if cfg.VolumeBackend == "" && !volumeManagerListening() {
+			if luna, lerr := newLunaControlVolume(api); lerr == nil {
+				if alsa, aerr := newALSAControlVolume(luna); aerr == nil {
+					fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", alsa.Backend())
+					return alsa, nil
+				}
+			}
+		}
 		v, err := newLunaControlVolume(api)
 		if err == nil {
 			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
