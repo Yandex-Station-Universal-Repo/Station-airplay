@@ -18,11 +18,26 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// volumeControl is the station-volume backend used by the shared controls.
+// Every implementation must keep the same three operations: read the current
+// level, write a level and confirm the write, and prove before startup that
+// writing is safe on this board.
+type volumeControl interface {
+	GetVolume(context.Context) (float64, error)
+	SetVolume(context.Context, int) (float64, error)
+	CheckWrite(context.Context) error
+	Backend() string
+}
+
 type packageVolume struct {
 	script string
 	root   string
 	device yamDevice
+	api    *yamAPI
+	alias  string
 }
+
+func (v *packageVolume) Backend() string { return "the station-volume package" }
 
 func findPackageVolume(root string, d yamDevice) (*packageVolume, error) {
 	dir := filepath.Join(filepath.Dir(root), "station-volume")
@@ -84,13 +99,22 @@ func (b *smallOutput) Write(p []byte) (int, error) {
 	return b.text.Write(p)
 }
 func (v *packageVolume) call(ctx context.Context, args ...string) (string, error) {
-	current, e := findPackageVolume(v.root, v.device)
+	var current *packageVolume
+	var e error
+	if v.api != nil {
+		current, e = findRuntimePackageVolume(ctx, v.api, v.alias, v.device)
+	} else {
+		current, e = findPackageVolume(v.root, v.device)
+	}
 	if e != nil {
 		return "", e
 	}
 	step, done := context.WithTimeout(ctx, 6*time.Second)
 	defer done()
 	cmd := exec.CommandContext(step, "sh", append([]string{current.script}, args...)...)
+	if v.api != nil {
+		cmd.Dir = current.root
+	}
 	cmd.Env = []string{"PATH=/system/bin:/usr/bin:/bin", "LANG=C"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true}
 	cmd.Cancel = func() error {
@@ -111,7 +135,7 @@ func (v *packageVolume) call(ctx context.Context, args ...string) (string, error
 	}
 	return strings.TrimSpace(out.text.String()), nil
 }
-func (v *packageVolume) checkWrite(ctx context.Context) error {
+func (v *packageVolume) CheckWrite(ctx context.Context) error {
 	out, e := v.call(ctx, "check-write")
 	if e != nil {
 		return e

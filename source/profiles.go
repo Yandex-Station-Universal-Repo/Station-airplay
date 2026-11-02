@@ -263,10 +263,16 @@ func joinHostID(prefix, id string) (string, error) {
 func stockHost(p stationProfile) (string, error) {
 	if p.nvramHostID {
 		b, e := os.ReadFile(linkplayNvram)
-		if e != nil {
+		if e == nil {
+			return nvramHostname(p.mdnsHostPrefix, b)
+		}
+		if !errors.Is(e, os.ErrNotExist) {
 			return "", e
 		}
-		return nvramHostname(p.mdnsHostPrefix, b)
+		// Bench images and repaired boards may not carry the Linkplay factory
+		// file. A missing file must not take AirPlay down: fall back to the same
+		// serial-based identity every other model uses.
+		fmt.Fprintf(os.Stderr, "station-airplay: %s missing, using serial host id\n", linkplayNvram)
 	}
 	b, e := os.ReadFile("/proc/cmdline")
 	if e != nil {

@@ -95,7 +95,7 @@ func (r *dbusReceiver) Gain(ctx context.Context, percent, lease uint32) error {
 
 type yamControlStation struct {
 	api    *yamAPI
-	volume *packageVolume
+	volume volumeControl
 }
 
 func (s yamControlStation) GetVolume(ctx context.Context) (float64, error) {
@@ -126,7 +126,7 @@ func serveControls(ctx context.Context, bus string, api *yamAPI, d yamDevice, cf
 		return err
 	}
 	defer r.conn.Close()
-	volume, err := controlsVolume(d, cfg)
+	volume, err := controlsVolume(ctx, api, d, cfg)
 	if err != nil {
 		return err
 	}
@@ -262,15 +262,95 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 	}
 }
 
-func controlsVolume(d yamDevice, cfg controlsConfig) (*packageVolume, error) {
+// controlsVolume picks the station volume owner. Without an explicit backend the
+// runtime API decides: a Luna invocation gets Luna's /api/volume, a legacy YAM
+// host keeps the station-volume package. An explicit volume_dependency always
+// means the package, so existing device configurations keep their behaviour.
+// lunaWriteIsSlow times one write of the current level. A host that owns
+// Quasar's IPC answers in a few hundred milliseconds; a host that still probes
+// the closed volume_manager port takes about a second and would make the
+// sender's slider lag, so the caller keeps its direct ALSA path there.
+func lunaWriteIsSlow(ctx context.Context, v *lunaControlVolume) (bool, error) {
+	current, err := v.GetVolume(ctx)
+	if err != nil {
+		return false, err
+	}
+	step, done := context.WithTimeout(ctx, 4*time.Second)
+	defer done()
+	started := time.Now()
+	if _, err := v.SetVolume(step, int(current)); err != nil {
+		return false, err
+	}
+	return time.Since(started) > 800*time.Millisecond, nil
+}
+
+func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (volumeControl, error) {
 	if !cfg.NativeVolume {
 		return nil, nil
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
+	backend := cfg.VolumeBackend
+	if backend == "" {
+		if cfg.VolumeDependency != "" {
+			backend = volumeBackendPackage
+		} else if api != nil {
+			if _, err := lunaServerRoot(api.base); err == nil {
+				backend = volumeBackendLuna
+			} else {
+				backend = volumeBackendPackage
+			}
+		} else {
+			backend = volumeBackendPackage
+		}
 	}
-	return findPackageVolume(filepath.Dir(filepath.Dir(exe)), d)
+	switch backend {
+	case volumeBackendLuna:
+		// Luna owns the station volume. Since 0.2.17 it writes Quasar's logical
+		// level as well as ALSA, so the sender's slider, the station buttons,
+		// the ring and Alice share one state; writing ALSA here instead would
+		// leave Quasar stale and the next button press would jump back. Older
+		// Luna retries the closed volume_manager port first and needs about a
+		// second per step, which is why the direct path still exists for that
+		// portless case. One no-op write at startup tells the two apart.
+		v, err := newLunaControlVolume(api)
+		if err == nil {
+			slow, perr := lunaWriteIsSlow(ctx, v)
+			if perr == nil && !slow {
+				fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+				return v, nil
+			}
+			if cfg.VolumeBackend == "" && !volumeManagerListening() {
+				if alsa, aerr := newALSAControlVolume(v); aerr == nil {
+					fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", alsa.Backend())
+					return alsa, nil
+				}
+			}
+			if perr != nil {
+				err = perr
+			}
+		}
+		if err == nil {
+			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		}
+		return v, err
+	case volumeBackendPackage:
+		var v volumeControl
+		var err error
+		if cfg.VolumeDependency != "" {
+			v, err = findRuntimePackageVolume(ctx, api, cfg.VolumeDependency, d)
+		} else {
+			exe, e := os.Executable()
+			if e != nil {
+				return nil, e
+			}
+			v, err = findPackageVolume(filepath.Dir(filepath.Dir(exe)), d)
+		}
+		if err == nil && v != nil {
+			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		}
+		return v, err
+	default:
+		return nil, errors.New("unknown volume backend")
+	}
 }
 func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) error {
 	var caps struct {
@@ -308,11 +388,11 @@ func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg contro
 		}
 	}
 	if cfg.NativeVolume {
-		v, err := controlsVolume(d, cfg)
+		v, err := controlsVolume(ctx, api, d, cfg)
 		if err != nil {
 			return err
 		}
-		if err = v.checkWrite(ctx); err != nil {
+		if err = v.CheckWrite(ctx); err != nil {
 			return err
 		}
 		if err = waitNativeVolume(ctx, v); err != nil {
@@ -331,7 +411,7 @@ var (
 	nativeVolumeRetryInterval = time.Second
 )
 
-func waitNativeVolume(ctx context.Context, v *packageVolume) error {
+func waitNativeVolume(ctx context.Context, v volumeControl) error {
 	deadline := time.Now().Add(nativeVolumeReadyTimeout)
 	reported := false
 	for {

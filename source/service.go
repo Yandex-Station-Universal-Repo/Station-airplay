@@ -197,6 +197,11 @@ var (
 	plumSharedProfile = stationProfile{name: "Yandex Lite 2 AirPlay", models: []string{"yandexplum", "plum"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
 	profiles          = []stationProfile{plumProfile, midiProfile, mini2Profile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
+		// Station 3 (orion) reports its own model id. Like the original Mini it
+		// ships no usable system D-Bus daemon, so run the packaged ARMhf one
+		// behind its loader; the receiver and speaker PCM match the other
+		// AirPlay 2 boards.
+		{name: "Yandex Station 3 AirPlay", models: []string{"yandexstation_3"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "yandex-station-3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", packagedDBus: true},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Mini 3 AirPlay", models: []string{"bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
@@ -1052,7 +1057,7 @@ func runPlum(ctx context.Context) error {
 			return e
 		}
 		defer volume.stop()
-		fmt.Println("station volume: the sender's slider sets the station volume via the station-volume package")
+		fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", volume.backend())
 	}
 	fmt.Printf("%s running on %s (YAM clock+ring; no buttons)\n", version, hw.name)
 	exits := make(chan exitInfo, len(children))
@@ -1091,10 +1096,8 @@ func runPlum(ctx context.Context) error {
 					volume.set(state.volume)
 					state.senderVolume = false
 				}
-				volume.poll(func(percent int) {
-					if state.inSession(now) { // idle: Alice shows her own volume
-						state.showVolume(percent, now)
-					}
+				volume.poll(state.inSession(now), func(percent int) {
+					state.showVolume(percent, now)
 				})
 			}
 			if vis != nil {

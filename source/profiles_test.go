@@ -46,6 +46,7 @@ func TestReceiverLogsStayBounded(t *testing.T) {
 func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 	for _, tc := range []struct{ model, pcm, abi, icon string }{
 		{"yandexstation_2", "plug:dmix_spk", "armhf", "AudioAccessory1,1"},
+		{"yandexstation_3", "speakers", "armhf", "AudioAccessory5,1"},
 		{"yandexmini_2", "default", "armhf", "AudioAccessory5,1"},
 		{"yandexmini_3_pro", "speakers", "aarch64", "AudioAccessory5,1"},
 		{"bergamot", "speakers", "armhf", "AudioAccessory5,1"},
@@ -60,6 +61,9 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 			}
 			if p.pcm != tc.pcm || p.receiverABI != tc.abi || !p.quasarCoexist {
 				t.Fatalf("wrong ABI/audio contract: %+v", p)
+			}
+			if tc.model == "yandexstation_3" && !p.packagedDBus {
+				t.Fatal("Station 3 must use the packaged armhf D-Bus")
 			}
 			conf := receiverConfig(p)
 			for _, s := range []string{tc.pcm, tc.icon, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
